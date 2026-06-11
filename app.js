@@ -1,139 +1,191 @@
 /**
  * サッカー戦術ボード - メインスクリプト
- * Canvas描画 + マウスドラッグ + 選手情報編集 + 保存/読込
+ * 自チーム・相手チームのフォーメーションを独立して変更可能
  */
 
 'use strict';
 
 // ===========================
-// フォーメーション定義
+// フォーメーション定義（自チーム用）
 // ===========================
-const FORMATIONS = {
-  '4-4-2': {
-    own: [
-      { number: 1,  name: 'GK',   rx: 0.05, ry: 0.50 },
-      { number: 2,  name: 'RB',   rx: 0.18, ry: 0.20 },
-      { number: 5,  name: 'CB',   rx: 0.18, ry: 0.38 },
-      { number: 4,  name: 'CB',   rx: 0.18, ry: 0.62 },
-      { number: 3,  name: 'LB',   rx: 0.18, ry: 0.80 },
-      { number: 7,  name: 'RMF',  rx: 0.38, ry: 0.20 },
-      { number: 8,  name: 'CMF',  rx: 0.38, ry: 0.38 },
-      { number: 6,  name: 'CMF',  rx: 0.38, ry: 0.62 },
-      { number: 11, name: 'LMF',  rx: 0.38, ry: 0.80 },
-      { number: 9,  name: 'CF',   rx: 0.58, ry: 0.38 },
-      { number: 10, name: 'CF',   rx: 0.58, ry: 0.62 },
-    ],
-    opponent: [
-      { position: 'GK',  rx: 0.95, ry: 0.50 },
-      { position: 'RB',  rx: 0.82, ry: 0.20 },
-      { position: 'CB',  rx: 0.82, ry: 0.38 },
-      { position: 'CB',  rx: 0.82, ry: 0.62 },
-      { position: 'LB',  rx: 0.82, ry: 0.80 },
-      { position: 'RMF', rx: 0.62, ry: 0.20 },
-      { position: 'CMF', rx: 0.62, ry: 0.38 },
-      { position: 'CMF', rx: 0.62, ry: 0.62 },
-      { position: 'LMF', rx: 0.62, ry: 0.80 },
-      { position: 'CF',  rx: 0.42, ry: 0.38 },
-      { position: 'CF',  rx: 0.42, ry: 0.62 },
-    ],
-  },
-  '4-2-3-1': {
-    own: [
-      { number: 1,  name: 'GK',   rx: 0.05, ry: 0.50 },
-      { number: 2,  name: 'RB',   rx: 0.18, ry: 0.18 },
-      { number: 5,  name: 'CB',   rx: 0.18, ry: 0.38 },
-      { number: 4,  name: 'CB',   rx: 0.18, ry: 0.62 },
-      { number: 3,  name: 'LB',   rx: 0.18, ry: 0.82 },
-      { number: 6,  name: 'DM',   rx: 0.33, ry: 0.38 },
-      { number: 8,  name: 'DM',   rx: 0.33, ry: 0.62 },
-      { number: 7,  name: 'RMF',  rx: 0.48, ry: 0.18 },
-      { number: 10, name: 'AMF',  rx: 0.48, ry: 0.50 },
-      { number: 11, name: 'LMF',  rx: 0.48, ry: 0.82 },
-      { number: 9,  name: 'CF',   rx: 0.63, ry: 0.50 },
-    ],
-    opponent: [
-      { position: 'GK',  rx: 0.95, ry: 0.50 },
-      { position: 'RWB', rx: 0.82, ry: 0.18 },
-      { position: 'RCB', rx: 0.82, ry: 0.35 },
-      { position: 'CB',  rx: 0.82, ry: 0.50 },
-      { position: 'LCB', rx: 0.82, ry: 0.65 },
-      { position: 'LWB', rx: 0.82, ry: 0.82 },
-      { position: 'RDM', rx: 0.67, ry: 0.35 },
-      { position: 'LDM', rx: 0.67, ry: 0.65 },
-      { position: 'AMR', rx: 0.52, ry: 0.22 },
-      { position: 'AML', rx: 0.52, ry: 0.78 },
-      { position: 'CF',  rx: 0.37, ry: 0.50 },
-    ],
-  },
-  '3-4-2-1': {
-    own: [
-      { number: 1,  name: 'GK',   rx: 0.05, ry: 0.50 },
-      { number: 5,  name: 'CB',   rx: 0.18, ry: 0.30 },
-      { number: 4,  name: 'CB',   rx: 0.18, ry: 0.50 },
-      { number: 3,  name: 'CB',   rx: 0.18, ry: 0.70 },
-      { number: 2,  name: 'RWB',  rx: 0.33, ry: 0.15 },
-      { number: 6,  name: 'CMF',  rx: 0.33, ry: 0.38 },
-      { number: 8,  name: 'CMF',  rx: 0.33, ry: 0.62 },
-      { number: 11, name: 'LWB',  rx: 0.33, ry: 0.85 },
-      { number: 7,  name: 'SS',   rx: 0.50, ry: 0.35 },
-      { number: 10, name: 'SS',   rx: 0.50, ry: 0.65 },
-      { number: 9,  name: 'CF',   rx: 0.63, ry: 0.50 },
-    ],
-    opponent: [
-      { position: 'GK',  rx: 0.95, ry: 0.50 },
-      { position: 'RB',  rx: 0.82, ry: 0.20 },
-      { position: 'CB',  rx: 0.82, ry: 0.38 },
-      { position: 'CB',  rx: 0.82, ry: 0.62 },
-      { position: 'LB',  rx: 0.82, ry: 0.80 },
-      { position: 'RMF', rx: 0.62, ry: 0.20 },
-      { position: 'CMF', rx: 0.62, ry: 0.38 },
-      { position: 'CMF', rx: 0.62, ry: 0.62 },
-      { position: 'LMF', rx: 0.62, ry: 0.80 },
-      { position: 'CF',  rx: 0.42, ry: 0.38 },
-      { position: 'CF',  rx: 0.42, ry: 0.62 },
-    ],
-  },
-  '4-3-3': {
-    own: [
-      { number: 1,  name: 'GK',   rx: 0.05, ry: 0.50 },
-      { number: 2,  name: 'RB',   rx: 0.18, ry: 0.18 },
-      { number: 5,  name: 'CB',   rx: 0.18, ry: 0.38 },
-      { number: 4,  name: 'CB',   rx: 0.18, ry: 0.62 },
-      { number: 3,  name: 'LB',   rx: 0.18, ry: 0.82 },
-      { number: 6,  name: 'CMF',  rx: 0.35, ry: 0.30 },
-      { number: 8,  name: 'CMF',  rx: 0.35, ry: 0.50 },
-      { number: 10, name: 'CMF',  rx: 0.35, ry: 0.70 },
-      { number: 7,  name: 'RWF',  rx: 0.58, ry: 0.18 },
-      { number: 9,  name: 'CF',   rx: 0.58, ry: 0.50 },
-      { number: 11, name: 'LWF',  rx: 0.58, ry: 0.82 },
-    ],
-    opponent: [
-      { position: 'GK',  rx: 0.95, ry: 0.50 },
-      { position: 'RB',  rx: 0.82, ry: 0.18 },
-      { position: 'CB',  rx: 0.82, ry: 0.38 },
-      { position: 'CB',  rx: 0.82, ry: 0.62 },
-      { position: 'LB',  rx: 0.82, ry: 0.82 },
-      { position: 'RMF', rx: 0.65, ry: 0.30 },
-      { position: 'CMF', rx: 0.65, ry: 0.50 },
-      { position: 'LMF', rx: 0.65, ry: 0.70 },
-      { position: 'RWF', rx: 0.42, ry: 0.18 },
-      { position: 'CF',  rx: 0.42, ry: 0.50 },
-      { position: 'LWF', rx: 0.42, ry: 0.82 },
-    ],
-  },
+const OWN_FORMATIONS = {
+  '4-4-2': [
+    { number: 1,  name: 'GK',   rx: 0.05, ry: 0.50 },
+    { number: 2,  name: 'RB',   rx: 0.18, ry: 0.20 },
+    { number: 5,  name: 'CB',   rx: 0.18, ry: 0.38 },
+    { number: 4,  name: 'CB',   rx: 0.18, ry: 0.62 },
+    { number: 3,  name: 'LB',   rx: 0.18, ry: 0.80 },
+    { number: 7,  name: 'RMF',  rx: 0.38, ry: 0.20 },
+    { number: 8,  name: 'CMF',  rx: 0.38, ry: 0.38 },
+    { number: 6,  name: 'CMF',  rx: 0.38, ry: 0.62 },
+    { number: 11, name: 'LMF',  rx: 0.38, ry: 0.80 },
+    { number: 9,  name: 'CF',   rx: 0.58, ry: 0.38 },
+    { number: 10, name: 'CF',   rx: 0.58, ry: 0.62 },
+  ],
+  '4-2-3-1': [
+    { number: 1,  name: 'GK',   rx: 0.05, ry: 0.50 },
+    { number: 2,  name: 'RB',   rx: 0.18, ry: 0.18 },
+    { number: 5,  name: 'CB',   rx: 0.18, ry: 0.38 },
+    { number: 4,  name: 'CB',   rx: 0.18, ry: 0.62 },
+    { number: 3,  name: 'LB',   rx: 0.18, ry: 0.82 },
+    { number: 6,  name: 'DM',   rx: 0.33, ry: 0.38 },
+    { number: 8,  name: 'DM',   rx: 0.33, ry: 0.62 },
+    { number: 7,  name: 'RMF',  rx: 0.48, ry: 0.18 },
+    { number: 10, name: 'AMF',  rx: 0.48, ry: 0.50 },
+    { number: 11, name: 'LMF',  rx: 0.48, ry: 0.82 },
+    { number: 9,  name: 'CF',   rx: 0.63, ry: 0.50 },
+  ],
+  '3-4-2-1': [
+    { number: 1,  name: 'GK',   rx: 0.05, ry: 0.50 },
+    { number: 5,  name: 'CB',   rx: 0.18, ry: 0.30 },
+    { number: 4,  name: 'CB',   rx: 0.18, ry: 0.50 },
+    { number: 3,  name: 'CB',   rx: 0.18, ry: 0.70 },
+    { number: 2,  name: 'RWB',  rx: 0.33, ry: 0.15 },
+    { number: 6,  name: 'CMF',  rx: 0.33, ry: 0.38 },
+    { number: 8,  name: 'CMF',  rx: 0.33, ry: 0.62 },
+    { number: 11, name: 'LWB',  rx: 0.33, ry: 0.85 },
+    { number: 7,  name: 'SS',   rx: 0.50, ry: 0.35 },
+    { number: 10, name: 'SS',   rx: 0.50, ry: 0.65 },
+    { number: 9,  name: 'CF',   rx: 0.63, ry: 0.50 },
+  ],
+  '4-3-3': [
+    { number: 1,  name: 'GK',   rx: 0.05, ry: 0.50 },
+    { number: 2,  name: 'RB',   rx: 0.18, ry: 0.18 },
+    { number: 5,  name: 'CB',   rx: 0.18, ry: 0.38 },
+    { number: 4,  name: 'CB',   rx: 0.18, ry: 0.62 },
+    { number: 3,  name: 'LB',   rx: 0.18, ry: 0.82 },
+    { number: 6,  name: 'CMF',  rx: 0.35, ry: 0.30 },
+    { number: 8,  name: 'CMF',  rx: 0.35, ry: 0.50 },
+    { number: 10, name: 'CMF',  rx: 0.35, ry: 0.70 },
+    { number: 7,  name: 'RWF',  rx: 0.58, ry: 0.18 },
+    { number: 9,  name: 'CF',   rx: 0.58, ry: 0.50 },
+    { number: 11, name: 'LWF',  rx: 0.58, ry: 0.82 },
+  ],
+  '3-5-2': [
+    { number: 1,  name: 'GK',   rx: 0.05, ry: 0.50 },
+    { number: 5,  name: 'CB',   rx: 0.18, ry: 0.28 },
+    { number: 4,  name: 'CB',   rx: 0.18, ry: 0.50 },
+    { number: 3,  name: 'CB',   rx: 0.18, ry: 0.72 },
+    { number: 2,  name: 'RWB',  rx: 0.35, ry: 0.12 },
+    { number: 6,  name: 'CMF',  rx: 0.35, ry: 0.32 },
+    { number: 8,  name: 'CMF',  rx: 0.35, ry: 0.50 },
+    { number: 10, name: 'CMF',  rx: 0.35, ry: 0.68 },
+    { number: 11, name: 'LWB',  rx: 0.35, ry: 0.88 },
+    { number: 9,  name: 'CF',   rx: 0.58, ry: 0.38 },
+    { number: 7,  name: 'CF',   rx: 0.58, ry: 0.62 },
+  ],
+  '5-3-2': [
+    { number: 1,  name: 'GK',   rx: 0.05, ry: 0.50 },
+    { number: 2,  name: 'RWB',  rx: 0.20, ry: 0.12 },
+    { number: 5,  name: 'CB',   rx: 0.20, ry: 0.30 },
+    { number: 4,  name: 'CB',   rx: 0.20, ry: 0.50 },
+    { number: 3,  name: 'CB',   rx: 0.20, ry: 0.70 },
+    { number: 11, name: 'LWB',  rx: 0.20, ry: 0.88 },
+    { number: 6,  name: 'CMF',  rx: 0.38, ry: 0.30 },
+    { number: 8,  name: 'CMF',  rx: 0.38, ry: 0.50 },
+    { number: 10, name: 'CMF',  rx: 0.38, ry: 0.70 },
+    { number: 9,  name: 'CF',   rx: 0.58, ry: 0.38 },
+    { number: 7,  name: 'CF',   rx: 0.58, ry: 0.62 },
+  ],
+};
+
+// ===========================
+// フォーメーション定義（相手チーム用）
+// ===========================
+const OPP_FORMATIONS = {
+  '4-4-2': [
+    { position: 'GK',  rx: 0.95, ry: 0.50 },
+    { position: 'RB',  rx: 0.82, ry: 0.20 },
+    { position: 'CB',  rx: 0.82, ry: 0.38 },
+    { position: 'CB',  rx: 0.82, ry: 0.62 },
+    { position: 'LB',  rx: 0.82, ry: 0.80 },
+    { position: 'RMF', rx: 0.62, ry: 0.20 },
+    { position: 'CMF', rx: 0.62, ry: 0.38 },
+    { position: 'CMF', rx: 0.62, ry: 0.62 },
+    { position: 'LMF', rx: 0.62, ry: 0.80 },
+    { position: 'CF',  rx: 0.42, ry: 0.38 },
+    { position: 'CF',  rx: 0.42, ry: 0.62 },
+  ],
+  '4-2-3-1': [
+    { position: 'GK',  rx: 0.95, ry: 0.50 },
+    { position: 'RWB', rx: 0.82, ry: 0.18 },
+    { position: 'RCB', rx: 0.82, ry: 0.35 },
+    { position: 'CB',  rx: 0.82, ry: 0.50 },
+    { position: 'LCB', rx: 0.82, ry: 0.65 },
+    { position: 'LWB', rx: 0.82, ry: 0.82 },
+    { position: 'RDM', rx: 0.67, ry: 0.35 },
+    { position: 'LDM', rx: 0.67, ry: 0.65 },
+    { position: 'AMR', rx: 0.52, ry: 0.22 },
+    { position: 'AML', rx: 0.52, ry: 0.78 },
+    { position: 'CF',  rx: 0.37, ry: 0.50 },
+  ],
+  '3-4-2-1': [
+    { position: 'GK',  rx: 0.95, ry: 0.50 },
+    { position: 'RCB', rx: 0.82, ry: 0.28 },
+    { position: 'CB',  rx: 0.82, ry: 0.50 },
+    { position: 'LCB', rx: 0.82, ry: 0.72 },
+    { position: 'RWB', rx: 0.67, ry: 0.12 },
+    { position: 'RMF', rx: 0.67, ry: 0.35 },
+    { position: 'LMF', rx: 0.67, ry: 0.65 },
+    { position: 'LWB', rx: 0.67, ry: 0.88 },
+    { position: 'SS',  rx: 0.50, ry: 0.35 },
+    { position: 'SS',  rx: 0.50, ry: 0.65 },
+    { position: 'CF',  rx: 0.37, ry: 0.50 },
+  ],
+  '4-3-3': [
+    { position: 'GK',  rx: 0.95, ry: 0.50 },
+    { position: 'RB',  rx: 0.82, ry: 0.18 },
+    { position: 'CB',  rx: 0.82, ry: 0.38 },
+    { position: 'CB',  rx: 0.82, ry: 0.62 },
+    { position: 'LB',  rx: 0.82, ry: 0.82 },
+    { position: 'RMF', rx: 0.65, ry: 0.30 },
+    { position: 'CMF', rx: 0.65, ry: 0.50 },
+    { position: 'LMF', rx: 0.65, ry: 0.70 },
+    { position: 'RWF', rx: 0.42, ry: 0.18 },
+    { position: 'CF',  rx: 0.42, ry: 0.50 },
+    { position: 'LWF', rx: 0.42, ry: 0.82 },
+  ],
+  '3-5-2': [
+    { position: 'GK',  rx: 0.95, ry: 0.50 },
+    { position: 'RCB', rx: 0.82, ry: 0.28 },
+    { position: 'CB',  rx: 0.82, ry: 0.50 },
+    { position: 'LCB', rx: 0.82, ry: 0.72 },
+    { position: 'RWB', rx: 0.65, ry: 0.12 },
+    { position: 'RMF', rx: 0.65, ry: 0.32 },
+    { position: 'CMF', rx: 0.65, ry: 0.50 },
+    { position: 'LMF', rx: 0.65, ry: 0.68 },
+    { position: 'LWB', rx: 0.65, ry: 0.88 },
+    { position: 'CF',  rx: 0.42, ry: 0.38 },
+    { position: 'CF',  rx: 0.42, ry: 0.62 },
+  ],
+  '5-3-2': [
+    { position: 'GK',  rx: 0.95, ry: 0.50 },
+    { position: 'RWB', rx: 0.80, ry: 0.12 },
+    { position: 'RCB', rx: 0.80, ry: 0.30 },
+    { position: 'CB',  rx: 0.80, ry: 0.50 },
+    { position: 'LCB', rx: 0.80, ry: 0.70 },
+    { position: 'LWB', rx: 0.80, ry: 0.88 },
+    { position: 'RMF', rx: 0.62, ry: 0.30 },
+    { position: 'CMF', rx: 0.62, ry: 0.50 },
+    { position: 'LMF', rx: 0.62, ry: 0.70 },
+    { position: 'CF',  rx: 0.42, ry: 0.38 },
+    { position: 'CF',  rx: 0.42, ry: 0.62 },
+  ],
 };
 
 // ===========================
 // アプリ状態
 // ===========================
 const state = {
-  markers: [],          // 全マーカー配列
+  markers: [],
   showOpponent: true,
   showName: true,
   showNumber: true,
-  dragging: null,       // { marker, offsetX, offsetY }
-  editTarget: null,     // 編集中マーカー
-  pitchRect: { x: 0, y: 0, w: 0, h: 0 },  // キャンバス上のピッチ描画領域
+  dragging: null,
+  editTarget: null,
+  pitchRect: { x: 0, y: 0, w: 0, h: 0 },
+  currentOwnFormation: '4-2-3-1',
+  currentOppFormation: '4-2-3-1',
 };
 
 // ===========================
@@ -149,7 +201,7 @@ const toast = document.getElementById('toast');
 // ===========================
 // ユーティリティ
 // ===========================
-function showToast(msg, duration = 2000) {
+function showToast(msg, duration = 2200) {
   toast.textContent = msg;
   toast.classList.remove('hidden');
   clearTimeout(showToast._timer);
@@ -163,43 +215,42 @@ function clamp(val, min, max) {
 // ===========================
 // マーカー生成
 // ===========================
-function createMarkers(formationKey) {
-  const f = FORMATIONS[formationKey];
-  const markers = [];
-  let id = 0;
-
-  // 解説側チーム
-  f.own.forEach(p => {
-    markers.push({
-      id: id++,
+function createOwnMarkers(formationKey, keepData) {
+  const template = OWN_FORMATIONS[formationKey];
+  return template.map((p, i) => {
+    const existing = keepData && keepData[i];
+    return {
+      id: `own_${i}`,
       type: 'own',
       rx: p.rx,
       ry: p.ry,
-      number: p.number,
-      name: p.name,
-    });
+      number: existing ? existing.number : p.number,
+      name:   existing ? existing.name   : p.name,
+    };
   });
+}
 
-  // 相手チーム
-  f.opponent.forEach(p => {
-    markers.push({
-      id: id++,
-      type: 'opponent',
-      rx: p.rx,
-      ry: p.ry,
-      position: p.position,
-    });
-  });
+function createOppMarkers(formationKey) {
+  const template = OPP_FORMATIONS[formationKey];
+  return template.map((p, i) => ({
+    id: `opp_${i}`,
+    type: 'opponent',
+    rx: p.rx,
+    ry: p.ry,
+    position: p.position,
+  }));
+}
 
-  // ボール
-  markers.push({
-    id: id++,
-    type: 'ball',
-    rx: 0.50,
-    ry: 0.50,
-  });
+function createBallMarker() {
+  return { id: 'ball', type: 'ball', rx: 0.50, ry: 0.50 };
+}
 
-  return markers;
+function buildMarkers(ownKey, oppKey, keepOwnData) {
+  return [
+    ...createOwnMarkers(ownKey, keepOwnData),
+    ...createOppMarkers(oppKey),
+    createBallMarker(),
+  ];
 }
 
 // ===========================
@@ -212,7 +263,6 @@ function resizeCanvas() {
   canvas.width = cw;
   canvas.height = ch;
 
-  // ピッチのアスペクト比 105:68 (横長)
   const PITCH_ASPECT = 105 / 68;
   const padding = 40;
   let pw = cw - padding * 2;
@@ -224,7 +274,6 @@ function resizeCanvas() {
   const px = (cw - pw) / 2;
   const py = (ch - ph) / 2;
   state.pitchRect = { x: px, y: py, w: pw, h: ph };
-
   draw();
 }
 
@@ -234,7 +283,6 @@ function resizeCanvas() {
 function drawPitch() {
   const { x, y, w, h } = state.pitchRect;
 
-  // 芝背景
   const grassGrad = ctx.createLinearGradient(x, y, x + w, y + h);
   grassGrad.addColorStop(0, '#2d8a3e');
   grassGrad.addColorStop(0.5, '#34a048');
@@ -244,7 +292,6 @@ function drawPitch() {
   ctx.roundRect(x, y, w, h, 6);
   ctx.fill();
 
-  // 芝縞模様
   ctx.save();
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, 6);
@@ -258,98 +305,91 @@ function drawPitch() {
   }
   ctx.restore();
 
-  // ライン設定
+  const lw = Math.max(1.5, w / 350);
   ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-  ctx.lineWidth = Math.max(1.5, w / 350);
+  ctx.lineWidth = lw;
 
-  // タッチライン（外枠）
   ctx.strokeRect(x, y, w, h);
 
-  // センターライン
   ctx.beginPath();
   ctx.moveTo(x + w / 2, y);
   ctx.lineTo(x + w / 2, y + h);
   ctx.stroke();
 
-  // センターサークル
-  const cr = h * 0.146; // 半径 9.15m / 68m
+  const cr = h * 0.146;
   ctx.beginPath();
   ctx.arc(x + w / 2, y + h / 2, cr, 0, Math.PI * 2);
   ctx.stroke();
 
-  // センタースポット
   ctx.fillStyle = 'rgba(255,255,255,0.85)';
   ctx.beginPath();
   ctx.arc(x + w / 2, y + h / 2, 3, 0, Math.PI * 2);
   ctx.fill();
 
-  // ペナルティエリア（左）
   const paW = w * (16.5 / 105);
   const paH = h * (40.32 / 68);
   const paY = y + (h - paH) / 2;
   ctx.strokeRect(x, paY, paW, paH);
 
-  // ゴールエリア（左）
   const gaW = w * (5.5 / 105);
   const gaH = h * (18.32 / 68);
   const gaY = y + (h - gaH) / 2;
   ctx.strokeRect(x, gaY, gaW, gaH);
 
-  // ペナルティエリア（右）
   ctx.strokeRect(x + w - paW, paY, paW, paH);
-
-  // ゴールエリア（右）
   ctx.strokeRect(x + w - gaW, gaY, gaW, gaH);
 
-  // ゴール（左）
   const goalH = h * (7.32 / 68);
   const goalW = w * (2.44 / 105);
   const goalY = y + (h - goalH) / 2;
   ctx.strokeStyle = 'rgba(255,255,255,0.6)';
   ctx.strokeRect(x - goalW, goalY, goalW, goalH);
-
-  // ゴール（右）
   ctx.strokeRect(x + w, goalY, goalW, goalH);
 
-  // ペナルティスポット（左）
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
   ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-  ctx.lineWidth = Math.max(1.5, w / 350);
+  ctx.lineWidth = lw;
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+
   const psX_l = x + w * (11 / 105);
   ctx.beginPath();
   ctx.arc(psX_l, y + h / 2, 3, 0, Math.PI * 2);
   ctx.fill();
 
-  // ペナルティスポット（右）
   const psX_r = x + w * (94 / 105);
   ctx.beginPath();
   ctx.arc(psX_r, y + h / 2, 3, 0, Math.PI * 2);
   ctx.fill();
 
-  // ペナルティアーク（左）
   const arcR = h * (9.15 / 68);
   ctx.beginPath();
   ctx.arc(psX_l, y + h / 2, arcR, -Math.PI * 0.28, Math.PI * 0.28);
   ctx.stroke();
-
-  // ペナルティアーク（右）
   ctx.beginPath();
   ctx.arc(psX_r, y + h / 2, arcR, Math.PI - Math.PI * 0.28, Math.PI + Math.PI * 0.28);
   ctx.stroke();
 
-  // コーナーアーク
   const cornerR = h * (1 / 68);
-  const corners = [
-    { cx: x, cy: y, sa: 0, ea: Math.PI / 2 },
-    { cx: x + w, cy: y, sa: Math.PI / 2, ea: Math.PI },
-    { cx: x + w, cy: y + h, sa: Math.PI, ea: Math.PI * 1.5 },
-    { cx: x, cy: y + h, sa: Math.PI * 1.5, ea: Math.PI * 2 },
-  ];
-  corners.forEach(c => {
+  [
+    { cx: x,     cy: y,     sa: 0,            ea: Math.PI / 2 },
+    { cx: x + w, cy: y,     sa: Math.PI / 2,  ea: Math.PI },
+    { cx: x + w, cy: y + h, sa: Math.PI,      ea: Math.PI * 1.5 },
+    { cx: x,     cy: y + h, sa: Math.PI * 1.5, ea: Math.PI * 2 },
+  ].forEach(c => {
     ctx.beginPath();
     ctx.arc(c.cx, c.cy, cornerR, c.sa, c.ea);
     ctx.stroke();
   });
+
+  // フォーメーションラベル
+  ctx.save();
+  ctx.font = `bold ${Math.round(h * 0.04)}px sans-serif`;
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.textAlign = 'left';
+  ctx.fillText(`自: ${state.currentOwnFormation}`, x + 6, y + 4);
+  ctx.textAlign = 'right';
+  ctx.fillText(`相手: ${state.currentOppFormation}`, x + w - 6, y + 4);
+  ctx.restore();
 }
 
 // ===========================
@@ -365,7 +405,6 @@ function markerToCanvas(marker) {
 
 function drawMarker(marker) {
   if (marker.type === 'opponent' && !state.showOpponent) return;
-
   const { cx, cy } = markerToCanvas(marker);
   const r = Math.max(16, state.pitchRect.w / 38);
 
@@ -375,7 +414,6 @@ function drawMarker(marker) {
   }
 
   if (marker.type === 'own') {
-    // 白丸
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
@@ -384,7 +422,6 @@ function drawMarker(marker) {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // 背番号
     if (state.showNumber) {
       ctx.fillStyle = '#1a1a2e';
       ctx.font = `bold ${Math.round(r * 0.85)}px sans-serif`;
@@ -393,7 +430,6 @@ function drawMarker(marker) {
       ctx.fillText(String(marker.number), cx, cy);
     }
 
-    // 名前
     if (state.showName && marker.name) {
       ctx.fillStyle = '#ffffff';
       ctx.font = `bold ${Math.round(r * 0.62)}px 'Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo',sans-serif`;
@@ -404,7 +440,6 @@ function drawMarker(marker) {
   }
 
   if (marker.type === 'opponent') {
-    // 濃い緑丸
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(15, 80, 30, 0.88)';
@@ -413,7 +448,6 @@ function drawMarker(marker) {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // ポジション名
     ctx.fillStyle = '#d4ffd4';
     const fontSize = marker.position.length > 3
       ? Math.round(r * 0.55)
@@ -426,7 +460,6 @@ function drawMarker(marker) {
 }
 
 function drawBall(cx, cy, r) {
-  // 白ベース
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.fillStyle = '#f5f5f5';
@@ -435,9 +468,7 @@ function drawBall(cx, cy, r) {
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // 黒パネル（簡易サッカーボール風）
   ctx.fillStyle = '#222';
-  // 中央五角形風
   const panels = [
     [0, -r * 0.42],
     [r * 0.40, -r * 0.13],
@@ -447,20 +478,15 @@ function drawBall(cx, cy, r) {
   ];
   ctx.beginPath();
   panels.forEach((p, i) => {
-    const px = cx + p[0];
-    const py = cy + p[1];
-    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    i === 0 ? ctx.moveTo(cx + p[0], cy + p[1]) : ctx.lineTo(cx + p[0], cy + p[1]);
   });
   ctx.closePath();
   ctx.fill();
 
-  // 外縁の小パネル（6方向）
   for (let i = 0; i < 6; i++) {
     const angle = (i / 6) * Math.PI * 2 - Math.PI / 6;
-    const px = cx + Math.cos(angle) * r * 0.72;
-    const py = cy + Math.sin(angle) * r * 0.72;
     ctx.beginPath();
-    ctx.arc(px, py, r * 0.18, 0, Math.PI * 2);
+    ctx.arc(cx + Math.cos(angle) * r * 0.72, cy + Math.sin(angle) * r * 0.72, r * 0.18, 0, Math.PI * 2);
     ctx.fill();
   }
 }
@@ -470,14 +496,10 @@ function drawBall(cx, cy, r) {
 // ===========================
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // 背景
   ctx.fillStyle = '#1a1a2e';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-
   drawPitch();
 
-  // マーカー描画（ボールを最後に）
   const balls = [];
   state.markers.forEach(m => {
     if (m.type === 'ball') balls.push(m);
@@ -490,21 +512,15 @@ function draw() {
 // ヒットテスト
 // ===========================
 function hitTest(mx, my) {
-  const { x, y, w, h } = state.pitchRect;
+  const { x, y, w } = state.pitchRect;
   const r = Math.max(16, w / 38);
-
-  // 逆順でテスト（上に描画されたものを優先）
   for (let i = state.markers.length - 1; i >= 0; i--) {
     const m = state.markers[i];
     if (m.type === 'opponent' && !state.showOpponent) continue;
-
     const { cx, cy } = markerToCanvas(m);
     const hitR = m.type === 'ball' ? r * 0.75 : r;
-    const dx = mx - cx;
-    const dy = my - cy;
-    if (dx * dx + dy * dy <= hitR * hitR) {
-      return m;
-    }
+    const dx = mx - cx, dy = my - cy;
+    if (dx * dx + dy * dy <= hitR * hitR) return m;
   }
   return null;
 }
@@ -518,10 +534,7 @@ function getCanvasPos(e) {
   const scaleY = canvas.height / rect.height;
   const clientX = e.touches ? e.touches[0].clientX : e.clientX;
   const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-  return {
-    x: (clientX - rect.left) * scaleX,
-    y: (clientY - rect.top) * scaleY,
-  };
+  return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
 }
 
 canvas.addEventListener('mousedown', onPointerDown);
@@ -532,13 +545,8 @@ function onPointerDown(e) {
   const pos = getCanvasPos(e);
   const hit = hitTest(pos.x, pos.y);
   if (!hit) return;
-
   const { cx, cy } = markerToCanvas(hit);
-  state.dragging = {
-    marker: hit,
-    offsetX: pos.x - cx,
-    offsetY: pos.y - cy,
-  };
+  state.dragging = { marker: hit, offsetX: pos.x - cx, offsetY: pos.y - cy };
   canvas.style.cursor = 'grabbing';
 }
 
@@ -551,13 +559,8 @@ function onPointerMove(e) {
   const pos = getCanvasPos(e);
   const { x, y, w, h } = state.pitchRect;
   const m = state.dragging.marker;
-
-  // ピッチ内に収める
-  const newCX = clamp(pos.x - state.dragging.offsetX, x, x + w);
-  const newCY = clamp(pos.y - state.dragging.offsetY, y, y + h);
-
-  m.rx = (newCX - x) / w;
-  m.ry = (newCY - y) / h;
+  m.rx = clamp((pos.x - state.dragging.offsetX - x) / w, 0, 1);
+  m.ry = clamp((pos.y - state.dragging.offsetY - y) / h, 0, 1);
   draw();
 }
 
@@ -576,7 +579,6 @@ canvas.addEventListener('dblclick', e => {
   const pos = getCanvasPos(e);
   const hit = hitTest(pos.x, pos.y);
   if (!hit || hit.type !== 'own') return;
-
   state.editTarget = hit;
   editNumber.value = hit.number;
   editName.value = hit.name;
@@ -599,7 +601,6 @@ document.getElementById('edit-cancel').addEventListener('click', () => {
   modal.classList.add('hidden');
 });
 
-// Enterキーで確定
 editName.addEventListener('keydown', e => {
   if (e.key === 'Enter') document.getElementById('edit-ok').click();
   if (e.key === 'Escape') document.getElementById('edit-cancel').click();
@@ -609,43 +610,50 @@ editNumber.addEventListener('keydown', e => {
 });
 
 // ===========================
-// フォーメーション切替
+// フォーメーション適用（自チーム）
 // ===========================
-document.getElementById('formation-select').addEventListener('change', e => {
-  const key = e.target.value;
-  // 解説側の名前・番号を保持しつつ位置だけリセット
-  const f = FORMATIONS[key];
-  const ownMarkers = state.markers.filter(m => m.type === 'own');
-  const opponentMarkers = state.markers.filter(m => m.type === 'opponent');
-  const ballMarker = state.markers.find(m => m.type === 'ball');
+document.getElementById('btn-apply-own').addEventListener('click', () => {
+  const key = document.getElementById('formation-own').value;
+  // 既存の選手データ（名前・番号）を保持
+  const currentOwn = state.markers.filter(m => m.type === 'own');
+  const newOwn = createOwnMarkers(key, currentOwn);
 
-  f.own.forEach((p, i) => {
-    if (ownMarkers[i]) {
-      ownMarkers[i].rx = p.rx;
-      ownMarkers[i].ry = p.ry;
-    }
-  });
-  f.opponent.forEach((p, i) => {
-    if (opponentMarkers[i]) {
-      opponentMarkers[i].rx = p.rx;
-      opponentMarkers[i].ry = p.ry;
-      opponentMarkers[i].position = p.position;
-    }
-  });
-  if (ballMarker) {
-    ballMarker.rx = 0.50;
-    ballMarker.ry = 0.50;
-  }
+  state.markers = state.markers.filter(m => m.type !== 'own');
+  state.markers.unshift(...newOwn);
+  state.currentOwnFormation = key;
   draw();
-  showToast(`フォーメーション: ${key}`);
+  showToast(`自チーム: ${key} に変更しました`);
+});
+
+// ===========================
+// フォーメーション適用（相手チーム）
+// ===========================
+document.getElementById('btn-apply-opponent').addEventListener('click', () => {
+  const key = document.getElementById('formation-opponent').value;
+  const newOpp = createOppMarkers(key);
+
+  state.markers = state.markers.filter(m => m.type !== 'opponent');
+  // ownの後ろ、ballの前に挿入
+  const ballIdx = state.markers.findIndex(m => m.type === 'ball');
+  if (ballIdx === -1) {
+    state.markers.push(...newOpp);
+  } else {
+    state.markers.splice(ballIdx, 0, ...newOpp);
+  }
+  state.currentOppFormation = key;
+  draw();
+  showToast(`相手チーム: ${key} に変更しました`);
 });
 
 // ===========================
 // リセット
 // ===========================
 document.getElementById('btn-reset').addEventListener('click', () => {
-  const key = document.getElementById('formation-select').value;
-  state.markers = createMarkers(key);
+  const ownKey = document.getElementById('formation-own').value;
+  const oppKey = document.getElementById('formation-opponent').value;
+  state.currentOwnFormation = ownKey;
+  state.currentOppFormation = oppKey;
+  state.markers = buildMarkers(ownKey, oppKey, null);
   draw();
   showToast('初期配置にリセットしました');
 });
@@ -667,13 +675,14 @@ document.getElementById('toggle-number').addEventListener('change', e => {
 });
 
 // ===========================
-// 保存・読込（ローカルストレージ）
+// 保存・読込
 // ===========================
-const STORAGE_KEY = 'soccer_tactics_board_v1';
+const STORAGE_KEY = 'soccer_tactics_board_v2';
 
 document.getElementById('btn-save').addEventListener('click', () => {
   const data = {
-    formation: document.getElementById('formation-select').value,
+    ownFormation: state.currentOwnFormation,
+    oppFormation: state.currentOppFormation,
     markers: state.markers.map(m => ({ ...m })),
     showOpponent: state.showOpponent,
     showName: state.showName,
@@ -685,23 +694,21 @@ document.getElementById('btn-save').addEventListener('click', () => {
 
 document.getElementById('btn-load').addEventListener('click', () => {
   const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    showToast('保存データが見つかりません');
-    return;
-  }
+  if (!raw) { showToast('保存データが見つかりません'); return; }
   try {
     const data = JSON.parse(raw);
     state.markers = data.markers;
+    state.currentOwnFormation = data.ownFormation ?? '4-2-3-1';
+    state.currentOppFormation = data.oppFormation ?? '4-2-3-1';
     state.showOpponent = data.showOpponent ?? true;
     state.showName = data.showName ?? true;
     state.showNumber = data.showNumber ?? true;
 
+    document.getElementById('formation-own').value = state.currentOwnFormation;
+    document.getElementById('formation-opponent').value = state.currentOppFormation;
     document.getElementById('toggle-opponent').checked = state.showOpponent;
     document.getElementById('toggle-name').checked = state.showName;
     document.getElementById('toggle-number').checked = state.showNumber;
-    if (data.formation) {
-      document.getElementById('formation-select').value = data.formation;
-    }
     draw();
     showToast('配置を読み込みました');
   } catch {
@@ -713,11 +720,9 @@ document.getElementById('btn-load').addEventListener('click', () => {
 // PNG書き出し
 // ===========================
 document.getElementById('btn-png').addEventListener('click', () => {
-  // コントロールパネルを隠してキャプチャ
   const panel = document.getElementById('control-panel');
   panel.style.visibility = 'hidden';
 
-  // ピッチ部分だけ切り出し
   const { x, y, w, h } = state.pitchRect;
   const margin = 20;
   const tmpCanvas = document.createElement('canvas');
@@ -746,15 +751,15 @@ document.getElementById('btn-fullscreen').addEventListener('click', () => {
   }
 });
 
-document.addEventListener('fullscreenchange', () => {
-  setTimeout(resizeCanvas, 100);
-});
+document.addEventListener('fullscreenchange', () => setTimeout(resizeCanvas, 100));
 
 // ===========================
 // 初期化
 // ===========================
 function init() {
-  state.markers = createMarkers('4-2-3-1');
+  state.currentOwnFormation = '4-2-3-1';
+  state.currentOppFormation = '4-2-3-1';
+  state.markers = buildMarkers('4-2-3-1', '4-2-3-1', null);
   resizeCanvas();
 }
 
