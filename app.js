@@ -2,6 +2,7 @@
  * サッカー戦術ボード - メインスクリプト
  * 自チーム・相手チームのフォーメーションを独立して変更可能
  * 自チーム選手に画像（顔写真）を設定可能
+ * 控えメンバー7人分のベンチエリアを追加
  */
 
 'use strict';
@@ -175,6 +176,19 @@ const OPP_FORMATIONS = {
 };
 
 // ===========================
+// 控えメンバーのデフォルト（7人）
+// ===========================
+const BENCH_DEFAULTS = [
+  { number: 12, name: 'GK' },
+  { number: 13, name: 'DF' },
+  { number: 14, name: 'DF' },
+  { number: 15, name: 'MF' },
+  { number: 16, name: 'MF' },
+  { number: 17, name: 'FW' },
+  { number: 18, name: 'FW' },
+];
+
+// ===========================
 // 画像キャッシュ（dataURL → HTMLImageElement）
 // ===========================
 const imgCache = new Map();
@@ -193,13 +207,15 @@ function getImage(dataUrl) {
 // アプリ状態
 // ===========================
 const state = {
-  markers: [],
+  markers: [],       // ピッチ上のマーカー（own / opponent / ball）
+  bench: [],         // 控えメンバー（bench 型）
   showOpponent: true,
   showName: true,
   showNumber: true,
   dragging: null,
   editTarget: null,
   pitchRect: { x: 0, y: 0, w: 0, h: 0 },
+  benchRect: { x: 0, y: 0, w: 0, h: 0 },
   currentOwnFormation: '4-2-3-1',
   currentOppFormation: '4-2-3-1',
 };
@@ -266,6 +282,20 @@ function createBallMarker() {
   return { id: 'ball', type: 'ball', rx: 0.50, ry: 0.50 };
 }
 
+function createBenchMarkers(keepData) {
+  return BENCH_DEFAULTS.map((p, i) => {
+    const existing = keepData && keepData[i];
+    return {
+      id: `bench_${i}`,
+      type: 'bench',
+      slotIndex: i,
+      number: existing ? existing.number : p.number,
+      name:   existing ? existing.name   : p.name,
+      imageDataUrl: existing ? (existing.imageDataUrl || null) : null,
+    };
+  });
+}
+
 function buildMarkers(ownKey, oppKey, keepOwnData) {
   return [
     ...createOwnMarkers(ownKey, keepOwnData),
@@ -277,6 +307,9 @@ function buildMarkers(ownKey, oppKey, keepOwnData) {
 // ===========================
 // キャンバスリサイズ
 // ===========================
+// ベンチエリアの高さ（マーカー直径 + 余白）
+const BENCH_SLOT_COUNT = 7;
+
 function resizeCanvas() {
   const container = document.getElementById('canvas-container');
   const cw = container.clientWidth;
@@ -285,16 +318,26 @@ function resizeCanvas() {
   canvas.height = ch;
 
   const PITCH_ASPECT = 105 / 68;
-  const padding = 40;
+  const padding = 20;
+  const benchH = Math.max(60, Math.min(90, ch * 0.12)); // ベンチエリア高さ
+  const bottomGap = benchH + 12; // ピッチ下部の余白
+
   let pw = cw - padding * 2;
   let ph = pw / PITCH_ASPECT;
-  if (ph > ch - padding * 2) {
-    ph = ch - padding * 2;
+  if (ph > ch - padding - bottomGap - 8) {
+    ph = ch - padding - bottomGap - 8;
     pw = ph * PITCH_ASPECT;
   }
   const px = (cw - pw) / 2;
-  const py = (ch - ph) / 2;
+  const py = padding;
   state.pitchRect = { x: px, y: py, w: pw, h: ph };
+
+  // ベンチエリア：ピッチ直下中央
+  const bw = pw;
+  const bx = px;
+  const by = py + ph + 12;
+  state.benchRect = { x: bx, y: by, w: bw, h: benchH };
+
   draw();
 }
 
@@ -414,6 +457,53 @@ function drawPitch() {
 }
 
 // ===========================
+// ベンチエリア描画
+// ===========================
+function getBenchSlotCenter(slotIndex) {
+  const { x, y, w, h } = state.benchRect;
+  const n = BENCH_SLOT_COUNT;
+  const slotW = w / n;
+  const cx = x + slotW * slotIndex + slotW / 2;
+  const cy = y + h / 2;
+  return { cx, cy };
+}
+
+function drawBenchArea() {
+  const { x, y, w, h } = state.benchRect;
+
+  // 背景
+  ctx.fillStyle = 'rgba(15, 25, 50, 0.75)';
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 6);
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 6);
+  ctx.stroke();
+
+  // ラベル
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.font = `bold ${Math.round(h * 0.18)}px sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('BENCH', x + 6, y + 3);
+
+  // スロット区切り線
+  const n = BENCH_SLOT_COUNT;
+  const slotW = w / n;
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 1;
+  for (let i = 1; i < n; i++) {
+    ctx.beginPath();
+    ctx.moveTo(x + slotW * i, y + 4);
+    ctx.lineTo(x + slotW * i, y + h - 4);
+    ctx.stroke();
+  }
+}
+
+// ===========================
 // マーカー描画
 // ===========================
 function markerToCanvas(marker) {
@@ -424,26 +514,38 @@ function markerToCanvas(marker) {
   };
 }
 
+function getMarkerRadius() {
+  return Math.max(14, state.pitchRect.w / 40);
+}
+
+function getBenchMarkerRadius() {
+  return Math.max(12, state.benchRect.h * 0.32);
+}
+
 function drawMarker(marker) {
   if (marker.type === 'opponent' && !state.showOpponent) return;
   const { cx, cy } = markerToCanvas(marker);
-  const r = Math.max(16, state.pitchRect.w / 38);
+  const r = getMarkerRadius();
 
   if (marker.type === 'ball') {
     drawBall(cx, cy, r * 0.75);
     return;
   }
-
   if (marker.type === 'own') {
     drawOwnMarker(marker, cx, cy, r);
   }
-
   if (marker.type === 'opponent') {
     drawOpponentMarker(marker, cx, cy, r);
   }
 }
 
-function drawOwnMarker(marker, cx, cy, r) {
+function drawBenchMarker(marker) {
+  const { cx, cy } = getBenchSlotCenter(marker.slotIndex);
+  const r = getBenchMarkerRadius();
+  drawOwnMarker(marker, cx, cy, r, true);
+}
+
+function drawOwnMarker(marker, cx, cy, r, isBench = false) {
   const img = marker.imageDataUrl ? getImage(marker.imageDataUrl) : null;
 
   if (img && img.complete && img.naturalWidth > 0) {
@@ -452,8 +554,6 @@ function drawOwnMarker(marker, cx, cy, r) {
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.clip();
-
-    // カバーフィット（中央トリミング）
     const iw = img.naturalWidth;
     const ih = img.naturalHeight;
     const side = Math.min(iw, ih);
@@ -462,10 +562,10 @@ function drawOwnMarker(marker, cx, cy, r) {
     ctx.drawImage(img, sx, sy, side, side, cx - r, cy - r, r * 2, r * 2);
     ctx.restore();
 
-    // 枠線
+    // 枠線（控えはオレンジ色）
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.strokeStyle = '#ffffff';
+    ctx.strokeStyle = isBench ? '#f59e0b' : '#ffffff';
     ctx.lineWidth = 2.5;
     ctx.stroke();
 
@@ -476,9 +576,9 @@ function drawOwnMarker(marker, cx, cy, r) {
       const by = cy + r * 0.65;
       ctx.beginPath();
       ctx.arc(bx, by, br, 0, Math.PI * 2);
-      ctx.fillStyle = '#1a1a2e';
+      ctx.fillStyle = isBench ? '#92400e' : '#1a1a2e';
       ctx.fill();
-      ctx.strokeStyle = '#ffffff';
+      ctx.strokeStyle = isBench ? '#f59e0b' : '#ffffff';
       ctx.lineWidth = 1.5;
       ctx.stroke();
       ctx.fillStyle = '#ffffff';
@@ -490,25 +590,25 @@ function drawOwnMarker(marker, cx, cy, r) {
 
     // 名前
     if (state.showName && marker.name) {
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = isBench ? '#fde68a' : '#ffffff';
       ctx.font = `bold ${Math.round(r * 0.62)}px 'Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo',sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.fillText(marker.name, cx, cy + r + 3);
+      ctx.fillText(marker.name, cx, cy + r + 2);
     }
 
   } else {
-    // 画像なし：白丸
+    // 画像なし
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = isBench ? '#fef3c7' : '#ffffff';
     ctx.fill();
-    ctx.strokeStyle = '#1a1a2e';
+    ctx.strokeStyle = isBench ? '#f59e0b' : '#1a1a2e';
     ctx.lineWidth = 2;
     ctx.stroke();
 
     if (state.showNumber) {
-      ctx.fillStyle = '#1a1a2e';
+      ctx.fillStyle = isBench ? '#92400e' : '#1a1a2e';
       ctx.font = `bold ${Math.round(r * 0.85)}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -516,11 +616,11 @@ function drawOwnMarker(marker, cx, cy, r) {
     }
 
     if (state.showName && marker.name) {
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = isBench ? '#fde68a' : '#ffffff';
       ctx.font = `bold ${Math.round(r * 0.62)}px 'Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo',sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.fillText(marker.name, cx, cy + r + 3);
+      ctx.fillText(marker.name, cx, cy + r + 2);
     }
   }
 }
@@ -583,22 +683,27 @@ function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = '#1a1a2e';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  drawPitch();
 
+  drawPitch();
+  drawBenchArea();
+
+  // ピッチマーカー（ボールは最後）
   const balls = [];
   state.markers.forEach(m => {
     if (m.type === 'ball') balls.push(m);
     else drawMarker(m);
   });
   balls.forEach(m => drawMarker(m));
+
+  // ベンチマーカー
+  state.bench.forEach(m => drawBenchMarker(m));
 }
 
 // ===========================
 // ヒットテスト
 // ===========================
-function hitTest(mx, my) {
-  const { w } = state.pitchRect;
-  const r = Math.max(16, w / 38);
+function hitTestPitch(mx, my) {
+  const r = getMarkerRadius();
   for (let i = state.markers.length - 1; i >= 0; i--) {
     const m = state.markers[i];
     if (m.type === 'opponent' && !state.showOpponent) continue;
@@ -606,6 +711,17 @@ function hitTest(mx, my) {
     const hitR = m.type === 'ball' ? r * 0.75 : r;
     const dx = mx - cx, dy = my - cy;
     if (dx * dx + dy * dy <= hitR * hitR) return m;
+  }
+  return null;
+}
+
+function hitTestBench(mx, my) {
+  const r = getBenchMarkerRadius();
+  for (let i = state.bench.length - 1; i >= 0; i--) {
+    const m = state.bench[i];
+    const { cx, cy } = getBenchSlotCenter(m.slotIndex);
+    const dx = mx - cx, dy = my - cy;
+    if (dx * dx + dy * dy <= r * r) return m;
   }
   return null;
 }
@@ -628,11 +744,23 @@ canvas.addEventListener('touchstart', onPointerDown, { passive: false });
 function onPointerDown(e) {
   e.preventDefault();
   const pos = getCanvasPos(e);
-  const hit = hitTest(pos.x, pos.y);
-  if (!hit) return;
-  const { cx, cy } = markerToCanvas(hit);
-  state.dragging = { marker: hit, offsetX: pos.x - cx, offsetY: pos.y - cy };
-  canvas.style.cursor = 'grabbing';
+
+  // ピッチ上のマーカーを優先
+  const pitchHit = hitTestPitch(pos.x, pos.y);
+  if (pitchHit) {
+    const { cx, cy } = markerToCanvas(pitchHit);
+    state.dragging = { marker: pitchHit, area: 'pitch', offsetX: pos.x - cx, offsetY: pos.y - cy };
+    canvas.style.cursor = 'grabbing';
+    return;
+  }
+
+  // ベンチマーカー
+  const benchHit = hitTestBench(pos.x, pos.y);
+  if (benchHit) {
+    const { cx, cy } = getBenchSlotCenter(benchHit.slotIndex);
+    state.dragging = { marker: benchHit, area: 'bench', offsetX: pos.x - cx, offsetY: pos.y - cy };
+    canvas.style.cursor = 'grabbing';
+  }
 }
 
 window.addEventListener('mousemove', onPointerMove);
@@ -642,10 +770,15 @@ function onPointerMove(e) {
   if (!state.dragging) return;
   e.preventDefault();
   const pos = getCanvasPos(e);
-  const { x, y, w, h } = state.pitchRect;
   const m = state.dragging.marker;
-  m.rx = clamp((pos.x - state.dragging.offsetX - x) / w, 0, 1);
-  m.ry = clamp((pos.y - state.dragging.offsetY - y) / h, 0, 1);
+
+  if (state.dragging.area === 'pitch') {
+    const { x, y, w, h } = state.pitchRect;
+    m.rx = clamp((pos.x - state.dragging.offsetX - x) / w, 0, 1);
+    m.ry = clamp((pos.y - state.dragging.offsetY - y) / h, 0, 1);
+  }
+  // ベンチマーカーはスロット固定（ドラッグ移動なし）
+
   draw();
 }
 
@@ -660,7 +793,7 @@ function onPointerUp() {
 // ===========================
 // 編集モーダル：プレビュー更新
 // ===========================
-let editTempImageDataUrl = null; // モーダル内の一時画像
+let editTempImageDataUrl = null;
 
 function updatePreview(dataUrl) {
   editTempImageDataUrl = dataUrl;
@@ -670,7 +803,6 @@ function updatePreview(dataUrl) {
     imgPreviewWrap.classList.add('has-image');
     const img = new Image();
     img.onload = () => {
-      // 円形クリップでプレビュー
       imgPreviewCtx.save();
       imgPreviewCtx.beginPath();
       imgPreviewCtx.arc(40, 40, 40, 0, Math.PI * 2);
@@ -694,9 +826,19 @@ function updatePreview(dataUrl) {
 // ===========================
 canvas.addEventListener('dblclick', e => {
   const pos = getCanvasPos(e);
-  const hit = hitTest(pos.x, pos.y);
-  if (!hit || hit.type !== 'own') return;
-  openEditModal(hit);
+
+  // ピッチ上の自チームマーカー
+  const pitchHit = hitTestPitch(pos.x, pos.y);
+  if (pitchHit && pitchHit.type === 'own') {
+    openEditModal(pitchHit);
+    return;
+  }
+
+  // ベンチマーカー
+  const benchHit = hitTestBench(pos.x, pos.y);
+  if (benchHit) {
+    openEditModal(benchHit);
+  }
 });
 
 function openEditModal(marker) {
@@ -708,7 +850,6 @@ function openEditModal(marker) {
   editName.focus();
 }
 
-// 画像プレビューをダブルクリックしてもファイル選択を開く
 imgPreviewWrap.addEventListener('dblclick', () => editImageInput.click());
 
 // ===========================
@@ -722,7 +863,6 @@ editImageInput.addEventListener('change', e => {
     return;
   }
 
-  // リサイズしてDataURLに変換（最大256px）
   const reader = new FileReader();
   reader.onload = ev => {
     const img = new Image();
@@ -741,13 +881,9 @@ editImageInput.addEventListener('change', e => {
     img.src = ev.target.result;
   };
   reader.readAsDataURL(file);
-  // 同じファイルを再選択できるようにリセット
   editImageInput.value = '';
 });
 
-// ===========================
-// 画像削除ボタン
-// ===========================
 document.getElementById('edit-image-clear').addEventListener('click', () => {
   updatePreview(null);
 });
@@ -762,9 +898,8 @@ document.getElementById('edit-ok').addEventListener('click', () => {
   state.editTarget.name = editName.value.trim() || state.editTarget.name;
   state.editTarget.imageDataUrl = editTempImageDataUrl;
 
-  // キャッシュを更新
   if (editTempImageDataUrl) {
-    imgCache.delete(editTempImageDataUrl); // 古いキャッシュを無効化
+    imgCache.delete(editTempImageDataUrl);
     getImage(editTempImageDataUrl);
   }
 
@@ -831,6 +966,7 @@ document.getElementById('btn-reset').addEventListener('click', () => {
   state.currentOwnFormation = ownKey;
   state.currentOppFormation = oppKey;
   state.markers = buildMarkers(ownKey, oppKey, null);
+  state.bench = createBenchMarkers(null);
   draw();
   showToast('初期配置にリセットしました');
 });
@@ -854,13 +990,14 @@ document.getElementById('toggle-number').addEventListener('change', e => {
 // ===========================
 // 保存・読込（ローカルストレージ）
 // ===========================
-const STORAGE_KEY = 'soccer_tactics_board_v3';
+const STORAGE_KEY = 'soccer_tactics_board_v4';
 
 document.getElementById('btn-save').addEventListener('click', () => {
   const data = {
     ownFormation: state.currentOwnFormation,
     oppFormation: state.currentOppFormation,
     markers: state.markers.map(m => ({ ...m })),
+    bench: state.bench.map(m => ({ ...m })),
     showOpponent: state.showOpponent,
     showName: state.showName,
     showNumber: state.showNumber,
@@ -870,15 +1007,14 @@ document.getElementById('btn-save').addEventListener('click', () => {
     showToast('配置を保存しました');
   } catch (e) {
     // 画像データが大きすぎる場合は画像なしで保存
-    const dataNoImg = {
-      ...data,
-      markers: data.markers.map(m => {
-        const { imageDataUrl, ...rest } = m;
-        return rest;
-      }),
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(dataNoImg));
-    showToast('配置を保存しました（画像は容量超過のため除外）');
+    const strip = arr => arr.map(m => { const { imageDataUrl, ...rest } = m; return rest; });
+    const dataNoImg = { ...data, markers: strip(data.markers), bench: strip(data.bench) };
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(dataNoImg));
+      showToast('保存しました（画像は容量超過のため除外）');
+    } catch {
+      showToast('保存に失敗しました（容量超過）');
+    }
   }
 });
 
@@ -888,6 +1024,7 @@ document.getElementById('btn-load').addEventListener('click', () => {
   try {
     const data = JSON.parse(raw);
     state.markers = data.markers;
+    state.bench = data.bench || createBenchMarkers(null);
     state.currentOwnFormation = data.ownFormation ?? '4-2-3-1';
     state.currentOppFormation = data.oppFormation ?? '4-2-3-1';
     state.showOpponent = data.showOpponent ?? true;
@@ -901,7 +1038,7 @@ document.getElementById('btn-load').addEventListener('click', () => {
     document.getElementById('toggle-number').checked = state.showNumber;
 
     // 画像キャッシュを再構築
-    state.markers.forEach(m => {
+    [...state.markers, ...state.bench].forEach(m => {
       if (m.imageDataUrl) getImage(m.imageDataUrl);
     });
 
@@ -916,18 +1053,20 @@ document.getElementById('btn-load').addEventListener('click', () => {
 // PNG書き出し
 // ===========================
 document.getElementById('btn-png').addEventListener('click', () => {
-  const panel = document.getElementById('control-panel');
-  panel.style.visibility = 'hidden';
+  const { x: px, y: py, w: pw, h: ph } = state.pitchRect;
+  const { x: bx, y: by, w: bw, h: bh } = state.benchRect;
+  const margin = 16;
 
-  const { x, y, w, h } = state.pitchRect;
-  const margin = 20;
+  const outX = Math.min(px, bx) - margin;
+  const outY = py - margin;
+  const outW = Math.max(pw, bw) + margin * 2;
+  const outH = (by + bh) - py + margin * 2;
+
   const tmpCanvas = document.createElement('canvas');
-  tmpCanvas.width = w + margin * 2;
-  tmpCanvas.height = h + margin * 2;
+  tmpCanvas.width = outW;
+  tmpCanvas.height = outH;
   const tmpCtx = tmpCanvas.getContext('2d');
-  tmpCtx.drawImage(canvas, x - margin, y - margin, w + margin * 2, h + margin * 2, 0, 0, w + margin * 2, h + margin * 2);
-
-  panel.style.visibility = '';
+  tmpCtx.drawImage(canvas, outX, outY, outW, outH, 0, 0, outW, outH);
 
   const link = document.createElement('a');
   link.download = `tactics_${Date.now()}.png`;
@@ -956,6 +1095,7 @@ function init() {
   state.currentOwnFormation = '4-2-3-1';
   state.currentOppFormation = '4-2-3-1';
   state.markers = buildMarkers('4-2-3-1', '4-2-3-1', null);
+  state.bench = createBenchMarkers(null);
   resizeCanvas();
 }
 
