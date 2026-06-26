@@ -1,6 +1,7 @@
 /**
  * サッカー戦術ボード - メインスクリプト
  * 自チーム・相手チームのフォーメーションを独立して変更可能
+ * 自チーム選手に画像（顔写真）を設定可能
  */
 
 'use strict';
@@ -174,6 +175,21 @@ const OPP_FORMATIONS = {
 };
 
 // ===========================
+// 画像キャッシュ（dataURL → HTMLImageElement）
+// ===========================
+const imgCache = new Map();
+
+function getImage(dataUrl) {
+  if (!dataUrl) return null;
+  if (imgCache.has(dataUrl)) return imgCache.get(dataUrl);
+  const img = new Image();
+  img.src = dataUrl;
+  img.onload = () => draw();
+  imgCache.set(dataUrl, img);
+  return img;
+}
+
+// ===========================
 // アプリ状態
 // ===========================
 const state = {
@@ -196,6 +212,10 @@ const ctx = canvas.getContext('2d');
 const modal = document.getElementById('edit-modal');
 const editNumber = document.getElementById('edit-number');
 const editName = document.getElementById('edit-name');
+const editImageInput = document.getElementById('edit-image-input');
+const imgPreviewWrap = document.getElementById('img-preview-wrap');
+const imgPreviewCanvas = document.getElementById('img-preview-canvas');
+const imgPreviewCtx = imgPreviewCanvas.getContext('2d');
 const toast = document.getElementById('toast');
 
 // ===========================
@@ -226,6 +246,7 @@ function createOwnMarkers(formationKey, keepData) {
       ry: p.ry,
       number: existing ? existing.number : p.number,
       name:   existing ? existing.name   : p.name,
+      imageDataUrl: existing ? (existing.imageDataUrl || null) : null,
     };
   });
 }
@@ -370,10 +391,10 @@ function drawPitch() {
 
   const cornerR = h * (1 / 68);
   [
-    { cx: x,     cy: y,     sa: 0,            ea: Math.PI / 2 },
-    { cx: x + w, cy: y,     sa: Math.PI / 2,  ea: Math.PI },
-    { cx: x + w, cy: y + h, sa: Math.PI,      ea: Math.PI * 1.5 },
-    { cx: x,     cy: y + h, sa: Math.PI * 1.5, ea: Math.PI * 2 },
+    { cx: x,     cy: y,     sa: 0,             ea: Math.PI / 2 },
+    { cx: x + w, cy: y,     sa: Math.PI / 2,   ea: Math.PI },
+    { cx: x + w, cy: y + h, sa: Math.PI,        ea: Math.PI * 1.5 },
+    { cx: x,     cy: y + h, sa: Math.PI * 1.5,  ea: Math.PI * 2 },
   ].forEach(c => {
     ctx.beginPath();
     ctx.arc(c.cx, c.cy, cornerR, c.sa, c.ea);
@@ -414,6 +435,70 @@ function drawMarker(marker) {
   }
 
   if (marker.type === 'own') {
+    drawOwnMarker(marker, cx, cy, r);
+  }
+
+  if (marker.type === 'opponent') {
+    drawOpponentMarker(marker, cx, cy, r);
+  }
+}
+
+function drawOwnMarker(marker, cx, cy, r) {
+  const img = marker.imageDataUrl ? getImage(marker.imageDataUrl) : null;
+
+  if (img && img.complete && img.naturalWidth > 0) {
+    // 画像あり：円形クリップで画像を描画
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+
+    // カバーフィット（中央トリミング）
+    const iw = img.naturalWidth;
+    const ih = img.naturalHeight;
+    const side = Math.min(iw, ih);
+    const sx = (iw - side) / 2;
+    const sy = (ih - side) / 2;
+    ctx.drawImage(img, sx, sy, side, side, cx - r, cy - r, r * 2, r * 2);
+    ctx.restore();
+
+    // 枠線
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    // 背番号バッジ（右下）
+    if (state.showNumber) {
+      const br = r * 0.38;
+      const bx = cx + r * 0.65;
+      const by = cy + r * 0.65;
+      ctx.beginPath();
+      ctx.arc(bx, by, br, 0, Math.PI * 2);
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold ${Math.round(br * 1.1)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(marker.number), bx, by);
+    }
+
+    // 名前
+    if (state.showName && marker.name) {
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold ${Math.round(r * 0.62)}px 'Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo',sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText(marker.name, cx, cy + r + 3);
+    }
+
+  } else {
+    // 画像なし：白丸
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.fillStyle = '#ffffff';
@@ -438,25 +523,25 @@ function drawMarker(marker) {
       ctx.fillText(marker.name, cx, cy + r + 3);
     }
   }
+}
 
-  if (marker.type === 'opponent') {
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(15, 80, 30, 0.88)';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(100, 200, 100, 0.7)';
-    ctx.lineWidth = 2;
-    ctx.stroke();
+function drawOpponentMarker(marker, cx, cy, r) {
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(15, 80, 30, 0.88)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(100, 200, 100, 0.7)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
 
-    ctx.fillStyle = '#d4ffd4';
-    const fontSize = marker.position.length > 3
-      ? Math.round(r * 0.55)
-      : Math.round(r * 0.65);
-    ctx.font = `bold ${fontSize}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(marker.position, cx, cy);
-  }
+  ctx.fillStyle = '#d4ffd4';
+  const fontSize = marker.position.length > 3
+    ? Math.round(r * 0.55)
+    : Math.round(r * 0.65);
+  ctx.font = `bold ${fontSize}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(marker.position, cx, cy);
 }
 
 function drawBall(cx, cy, r) {
@@ -512,7 +597,7 @@ function draw() {
 // ヒットテスト
 // ===========================
 function hitTest(mx, my) {
-  const { x, y, w } = state.pitchRect;
+  const { w } = state.pitchRect;
   const r = Math.max(16, w / 38);
   for (let i = state.markers.length - 1; i >= 0; i--) {
     const m = state.markers[i];
@@ -573,31 +658,125 @@ function onPointerUp() {
 }
 
 // ===========================
-// ダブルクリックで編集
+// 編集モーダル：プレビュー更新
+// ===========================
+let editTempImageDataUrl = null; // モーダル内の一時画像
+
+function updatePreview(dataUrl) {
+  editTempImageDataUrl = dataUrl;
+  imgPreviewCtx.clearRect(0, 0, 80, 80);
+
+  if (dataUrl) {
+    imgPreviewWrap.classList.add('has-image');
+    const img = new Image();
+    img.onload = () => {
+      // 円形クリップでプレビュー
+      imgPreviewCtx.save();
+      imgPreviewCtx.beginPath();
+      imgPreviewCtx.arc(40, 40, 40, 0, Math.PI * 2);
+      imgPreviewCtx.clip();
+      const iw = img.naturalWidth;
+      const ih = img.naturalHeight;
+      const side = Math.min(iw, ih);
+      const sx = (iw - side) / 2;
+      const sy = (ih - side) / 2;
+      imgPreviewCtx.drawImage(img, sx, sy, side, side, 0, 0, 80, 80);
+      imgPreviewCtx.restore();
+    };
+    img.src = dataUrl;
+  } else {
+    imgPreviewWrap.classList.remove('has-image');
+  }
+}
+
+// ===========================
+// ダブルクリックで編集モーダルを開く
 // ===========================
 canvas.addEventListener('dblclick', e => {
   const pos = getCanvasPos(e);
   const hit = hitTest(pos.x, pos.y);
   if (!hit || hit.type !== 'own') return;
-  state.editTarget = hit;
-  editNumber.value = hit.number;
-  editName.value = hit.name;
-  modal.classList.remove('hidden');
-  editName.focus();
+  openEditModal(hit);
 });
 
+function openEditModal(marker) {
+  state.editTarget = marker;
+  editNumber.value = marker.number;
+  editName.value = marker.name;
+  updatePreview(marker.imageDataUrl || null);
+  modal.classList.remove('hidden');
+  editName.focus();
+}
+
+// 画像プレビューをダブルクリックしてもファイル選択を開く
+imgPreviewWrap.addEventListener('dblclick', () => editImageInput.click());
+
+// ===========================
+// 画像ファイル選択
+// ===========================
+editImageInput.addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    showToast('画像ファイルを選択してください');
+    return;
+  }
+
+  // リサイズしてDataURLに変換（最大256px）
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 256;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const tmpCanvas = document.createElement('canvas');
+      tmpCanvas.width = w;
+      tmpCanvas.height = h;
+      tmpCanvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const dataUrl = tmpCanvas.toDataURL('image/jpeg', 0.85);
+      updatePreview(dataUrl);
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  // 同じファイルを再選択できるようにリセット
+  editImageInput.value = '';
+});
+
+// ===========================
+// 画像削除ボタン
+// ===========================
+document.getElementById('edit-image-clear').addEventListener('click', () => {
+  updatePreview(null);
+});
+
+// ===========================
+// OK / キャンセル
+// ===========================
 document.getElementById('edit-ok').addEventListener('click', () => {
   if (!state.editTarget) return;
   const num = parseInt(editNumber.value, 10);
   state.editTarget.number = isNaN(num) ? state.editTarget.number : clamp(num, 1, 99);
   state.editTarget.name = editName.value.trim() || state.editTarget.name;
+  state.editTarget.imageDataUrl = editTempImageDataUrl;
+
+  // キャッシュを更新
+  if (editTempImageDataUrl) {
+    imgCache.delete(editTempImageDataUrl); // 古いキャッシュを無効化
+    getImage(editTempImageDataUrl);
+  }
+
   state.editTarget = null;
+  editTempImageDataUrl = null;
   modal.classList.add('hidden');
   draw();
 });
 
 document.getElementById('edit-cancel').addEventListener('click', () => {
   state.editTarget = null;
+  editTempImageDataUrl = null;
   modal.classList.add('hidden');
 });
 
@@ -614,7 +793,6 @@ editNumber.addEventListener('keydown', e => {
 // ===========================
 document.getElementById('btn-apply-own').addEventListener('click', () => {
   const key = document.getElementById('formation-own').value;
-  // 既存の選手データ（名前・番号）を保持
   const currentOwn = state.markers.filter(m => m.type === 'own');
   const newOwn = createOwnMarkers(key, currentOwn);
 
@@ -633,7 +811,6 @@ document.getElementById('btn-apply-opponent').addEventListener('click', () => {
   const newOpp = createOppMarkers(key);
 
   state.markers = state.markers.filter(m => m.type !== 'opponent');
-  // ownの後ろ、ballの前に挿入
   const ballIdx = state.markers.findIndex(m => m.type === 'ball');
   if (ballIdx === -1) {
     state.markers.push(...newOpp);
@@ -675,9 +852,9 @@ document.getElementById('toggle-number').addEventListener('change', e => {
 });
 
 // ===========================
-// 保存・読込
+// 保存・読込（ローカルストレージ）
 // ===========================
-const STORAGE_KEY = 'soccer_tactics_board_v2';
+const STORAGE_KEY = 'soccer_tactics_board_v3';
 
 document.getElementById('btn-save').addEventListener('click', () => {
   const data = {
@@ -688,8 +865,21 @@ document.getElementById('btn-save').addEventListener('click', () => {
     showName: state.showName,
     showNumber: state.showNumber,
   };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  showToast('配置を保存しました');
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    showToast('配置を保存しました');
+  } catch (e) {
+    // 画像データが大きすぎる場合は画像なしで保存
+    const dataNoImg = {
+      ...data,
+      markers: data.markers.map(m => {
+        const { imageDataUrl, ...rest } = m;
+        return rest;
+      }),
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(dataNoImg));
+    showToast('配置を保存しました（画像は容量超過のため除外）');
+  }
 });
 
 document.getElementById('btn-load').addEventListener('click', () => {
@@ -709,6 +899,12 @@ document.getElementById('btn-load').addEventListener('click', () => {
     document.getElementById('toggle-opponent').checked = state.showOpponent;
     document.getElementById('toggle-name').checked = state.showName;
     document.getElementById('toggle-number').checked = state.showNumber;
+
+    // 画像キャッシュを再構築
+    state.markers.forEach(m => {
+      if (m.imageDataUrl) getImage(m.imageDataUrl);
+    });
+
     draw();
     showToast('配置を読み込みました');
   } catch {

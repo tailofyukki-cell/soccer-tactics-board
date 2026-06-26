@@ -77,6 +77,22 @@
   <div id="edit-modal" class="modal hidden">
     <div class="modal-content">
       <h3>選手情報の編集</h3>
+
+      <!-- 画像エリア -->
+      <div class="image-edit-area">
+        <div id="img-preview-wrap" class="img-preview-wrap">
+          <canvas id="img-preview-canvas" width="80" height="80"></canvas>
+          <div class="img-preview-hint">ダブルクリックで<br>画像を選択</div>
+        </div>
+        <div class="image-edit-controls">
+          <label class="btn btn-secondary btn-sm" for="edit-image-input">
+            画像を選択
+          </label>
+          <input type="file" id="edit-image-input" accept="image/*" style="display:none" />
+          <button id="edit-image-clear" class="btn btn-danger btn-sm">画像を削除</button>
+        </div>
+      </div>
+
       <div class="form-row">
         <label>背番号</label>
         <input type="number" id="edit-number" min="1" max="99" />
