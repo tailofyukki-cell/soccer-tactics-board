@@ -540,9 +540,26 @@ function drawMarker(marker) {
 }
 
 function drawBenchMarker(marker) {
-  const { cx, cy } = getBenchSlotCenter(marker.slotIndex);
-  const r = getBenchMarkerRadius();
-  drawOwnMarker(marker, cx, cy, r, true);
+  if (marker._onPitch) {
+    // ピッチ上に移動済みの場合はピッチマーカーと同じサイズで描画
+    const r = getMarkerRadius();
+    const { x, y, w, h } = state.pitchRect;
+    const cx = x + marker.rx * w;
+    const cy = y + marker.ry * h;
+    drawOwnMarker(marker, cx, cy, r, true);
+  } else if (marker.rx !== undefined) {
+    // ベンチエリア内の自由位置
+    const r = getBenchMarkerRadius();
+    const { x, y, w, h } = state.benchRect;
+    const cx = x + marker.rx * w;
+    const cy = y + marker.ry * h;
+    drawOwnMarker(marker, cx, cy, r, true);
+  } else {
+    // 初期スロット位置
+    const r = getBenchMarkerRadius();
+    const { cx, cy } = getBenchSlotCenter(marker.slotIndex);
+    drawOwnMarker(marker, cx, cy, r, true);
+  }
 }
 
 function drawOwnMarker(marker, cx, cy, r, isBench = false) {
@@ -716,14 +733,30 @@ function hitTestPitch(mx, my) {
 }
 
 function hitTestBench(mx, my) {
-  const r = getBenchMarkerRadius();
   for (let i = state.bench.length - 1; i >= 0; i--) {
     const m = state.bench[i];
-    const { cx, cy } = getBenchSlotCenter(m.slotIndex);
+    const { cx, cy } = getBenchMarkerPos(m);
+    // ピッチ上にある場合はピッチマーカーと同じ半径で判定
+    const r = m._onPitch ? getMarkerRadius() : getBenchMarkerRadius();
     const dx = mx - cx, dy = my - cy;
     if (dx * dx + dy * dy <= r * r) return m;
   }
   return null;
+}
+
+// ベンチマーカーの現在位置を返す（自由移動後は rx/ry を使用）
+function getBenchMarkerPos(marker) {
+  if (marker.rx !== undefined && marker.ry !== undefined) {
+    // ピッチ上に移動済みの場合はピッチ座標系を使用
+    if (marker._onPitch) {
+      const { x, y, w, h } = state.pitchRect;
+      return { cx: x + marker.rx * w, cy: y + marker.ry * h };
+    }
+    // ベンチエリア内での自由位置
+    const { x, y, w, h } = state.benchRect;
+    return { cx: x + marker.rx * w, cy: y + marker.ry * h };
+  }
+  return getBenchSlotCenter(marker.slotIndex);
 }
 
 // ===========================
@@ -757,7 +790,13 @@ function onPointerDown(e) {
   // ベンチマーカー
   const benchHit = hitTestBench(pos.x, pos.y);
   if (benchHit) {
-    const { cx, cy } = getBenchSlotCenter(benchHit.slotIndex);
+    const { cx, cy } = getBenchMarkerPos(benchHit);
+    // 初回ドラッグ時にスロット中心から rx/ry を初期化
+    if (benchHit.rx === undefined) {
+      const { x, y, w, h } = state.benchRect;
+      benchHit.rx = (cx - x) / w;
+      benchHit.ry = (cy - y) / h;
+    }
     state.dragging = { marker: benchHit, area: 'bench', offsetX: pos.x - cx, offsetY: pos.y - cy };
     canvas.style.cursor = 'grabbing';
   }
@@ -771,13 +810,31 @@ function onPointerMove(e) {
   e.preventDefault();
   const pos = getCanvasPos(e);
   const m = state.dragging.marker;
+  const targetX = pos.x - state.dragging.offsetX;
+  const targetY = pos.y - state.dragging.offsetY;
 
   if (state.dragging.area === 'pitch') {
     const { x, y, w, h } = state.pitchRect;
-    m.rx = clamp((pos.x - state.dragging.offsetX - x) / w, 0, 1);
-    m.ry = clamp((pos.y - state.dragging.offsetY - y) / h, 0, 1);
+    m.rx = clamp((targetX - x) / w, 0, 1);
+    m.ry = clamp((targetY - y) / h, 0, 1);
+  } else if (state.dragging.area === 'bench') {
+    // ベンチマーカーはピッチ・ベンチエリア問わず全画面を自由に移動可能
+    const { x: px, y: py, w: pw, h: ph } = state.pitchRect;
+    const { x: bx, y: by, w: bw, h: bh } = state.benchRect;
+
+    // ピッチエリア内にドラッグされたらピッチ座標系に切り替え
+    if (targetX >= px && targetX <= px + pw && targetY >= py && targetY <= py + ph) {
+      m._onPitch = true;
+      m.rx = clamp((targetX - px) / pw, 0, 1);
+      m.ry = clamp((targetY - py) / ph, 0, 1);
+    } else {
+      // ベンチエリア（またはその外）では全キャンバス座標で管理
+      m._onPitch = false;
+      // ベンチエリアを基準に正規化（範囲外も許容）
+      m.rx = (targetX - bx) / bw;
+      m.ry = (targetY - by) / bh;
+    }
   }
-  // ベンチマーカーはスロット固定（ドラッグ移動なし）
 
   draw();
 }
@@ -1091,6 +1148,7 @@ document.addEventListener('fullscreenchange', () => setTimeout(resizeCanvas, 100
 // ===========================
 // 初期化
 // ===========================
+window._appState = state; // デバッグ用
 function init() {
   state.currentOwnFormation = '4-2-3-1';
   state.currentOppFormation = '4-2-3-1';
