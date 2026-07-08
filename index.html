@@ -16,12 +16,26 @@
     <div class="panel-group">
       <label class="panel-label">自チーム</label>
       <select id="formation-own">
-        <option value="4-4-2">4-4-2</option>
-        <option value="4-2-3-1" selected>4-2-3-1</option>
-        <option value="3-4-2-1">3-4-2-1</option>
-        <option value="4-3-3">4-3-3</option>
-        <option value="3-5-2">3-5-2</option>
-        <option value="5-3-2">5-3-2</option>
+        <optgroup label="4バック">
+          <option value="4-4-2">4-4-2</option>
+          <option value="4-2-3-1" selected>4-2-3-1</option>
+          <option value="4-3-3">4-3-3</option>
+          <option value="4-1-4-1">4-1-4-1</option>
+          <option value="4-4-1-1">4-4-1-1</option>
+          <option value="4-1-2-1-2">4-1-2-1-2 (ダイヤ)</option>
+          <option value="4-3-1-2">4-3-1-2</option>
+          <option value="4-5-1">4-5-1</option>
+          <option value="4-2-2-2">4-2-2-2</option>
+        </optgroup>
+        <optgroup label="3バック">
+          <option value="3-4-2-1">3-4-2-1</option>
+          <option value="3-5-2">3-5-2</option>
+          <option value="3-3-3-1">3-3-3-1</option>
+          <option value="3-4-3">3-4-3</option>
+        </optgroup>
+        <optgroup label="5バック">
+          <option value="5-3-2">5-3-2</option>
+        </optgroup>
       </select>
       <button id="btn-apply-own" class="btn btn-primary">適用</button>
     </div>
@@ -29,12 +43,26 @@
     <div class="panel-group">
       <label class="panel-label">相手チーム</label>
       <select id="formation-opponent">
-        <option value="4-4-2">4-4-2</option>
-        <option value="4-2-3-1" selected>4-2-3-1</option>
-        <option value="3-4-2-1">3-4-2-1</option>
-        <option value="4-3-3">4-3-3</option>
-        <option value="3-5-2">3-5-2</option>
-        <option value="5-3-2">5-3-2</option>
+        <optgroup label="4バック">
+          <option value="4-4-2">4-4-2</option>
+          <option value="4-2-3-1" selected>4-2-3-1</option>
+          <option value="4-3-3">4-3-3</option>
+          <option value="4-1-4-1">4-1-4-1</option>
+          <option value="4-4-1-1">4-4-1-1</option>
+          <option value="4-1-2-1-2">4-1-2-1-2 (ダイヤ)</option>
+          <option value="4-3-1-2">4-3-1-2</option>
+          <option value="4-5-1">4-5-1</option>
+          <option value="4-2-2-2">4-2-2-2</option>
+        </optgroup>
+        <optgroup label="3バック">
+          <option value="3-4-2-1">3-4-2-1</option>
+          <option value="3-5-2">3-5-2</option>
+          <option value="3-3-3-1">3-3-3-1</option>
+          <option value="3-4-3">3-4-3</option>
+        </optgroup>
+        <optgroup label="5バック">
+          <option value="5-3-2">5-3-2</option>
+        </optgroup>
       </select>
       <button id="btn-apply-opponent" class="btn btn-secondary">適用</button>
     </div>
