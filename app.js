@@ -428,6 +428,8 @@ const state = {
   benchRect: { x: 0, y: 0, w: 0, h: 0 },
   currentOwnFormation: '4-2-3-1',
   currentOppFormation: '4-2-3-1',
+  orientation: 'landscape', // 'landscape' | 'portrait'
+  sidesFlipped: false,      // true = 自チームが右側
 };
 
 // ===========================
@@ -527,26 +529,51 @@ function resizeCanvas() {
   canvas.width = cw;
   canvas.height = ch;
 
-  const PITCH_ASPECT = 105 / 68;
   const padding = 20;
-  const benchH = Math.max(60, Math.min(90, ch * 0.12)); // ベンチエリア高さ
-  const bottomGap = benchH + 12; // ピッチ下部の余白
 
-  let pw = cw - padding * 2;
-  let ph = pw / PITCH_ASPECT;
-  if (ph > ch - padding - bottomGap - 8) {
-    ph = ch - padding - bottomGap - 8;
-    pw = ph * PITCH_ASPECT;
+  if (state.orientation === 'portrait') {
+    // 縦向き：ピッチは 68/105 アスペクト、ベンチは右側
+    const PITCH_ASPECT = 68 / 105;
+    const benchW = Math.max(60, Math.min(90, cw * 0.13)); // ベンチエリア幅
+    const rightGap = benchW + 12;
+
+    let ph = ch - padding * 2;
+    let pw = ph * PITCH_ASPECT;
+    if (pw > cw - padding - rightGap - 8) {
+      pw = cw - padding - rightGap - 8;
+      ph = pw / PITCH_ASPECT;
+    }
+    const px = padding;
+    const py = (ch - ph) / 2;
+    state.pitchRect = { x: px, y: py, w: pw, h: ph };
+
+    // ベンチエリア：ピッチ右側縦列
+    const bh = ph;
+    const bx = px + pw + 12;
+    const by = py;
+    state.benchRect = { x: bx, y: by, w: benchW, h: bh };
+  } else {
+    // 横向き：ピッチは 105/68 アスペクト、ベンチは下側
+    const PITCH_ASPECT = 105 / 68;
+    const benchH = Math.max(60, Math.min(90, ch * 0.12));
+    const bottomGap = benchH + 12;
+
+    let pw = cw - padding * 2;
+    let ph = pw / PITCH_ASPECT;
+    if (ph > ch - padding - bottomGap - 8) {
+      ph = ch - padding - bottomGap - 8;
+      pw = ph * PITCH_ASPECT;
+    }
+    const px = (cw - pw) / 2;
+    const py = padding;
+    state.pitchRect = { x: px, y: py, w: pw, h: ph };
+
+    // ベンチエリア：ピッチ直下中央
+    const bw = pw;
+    const bx = px;
+    const by = py + ph + 12;
+    state.benchRect = { x: bx, y: by, w: bw, h: benchH };
   }
-  const px = (cw - pw) / 2;
-  const py = padding;
-  state.pitchRect = { x: px, y: py, w: pw, h: ph };
-
-  // ベンチエリア：ピッチ直下中央
-  const bw = pw;
-  const bx = px;
-  const by = py + ph + 12;
-  state.benchRect = { x: bx, y: by, w: bw, h: benchH };
 
   draw();
 }
@@ -556,7 +583,9 @@ function resizeCanvas() {
 // ===========================
 function drawPitch() {
   const { x, y, w, h } = state.pitchRect;
+  const isPortrait = state.orientation === 'portrait';
 
+  // 草地グラデーション
   const grassGrad = ctx.createLinearGradient(x, y, x + w, y + h);
   grassGrad.addColorStop(0, '#2d8a3e');
   grassGrad.addColorStop(0.5, '#34a048');
@@ -566,104 +595,191 @@ function drawPitch() {
   ctx.roundRect(x, y, w, h, 6);
   ctx.fill();
 
+  // ストライプ
   ctx.save();
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, 6);
   ctx.clip();
-  const stripeW = w / 10;
-  for (let i = 0; i < 10; i++) {
-    if (i % 2 === 0) {
-      ctx.fillStyle = 'rgba(0,0,0,0.04)';
-      ctx.fillRect(x + i * stripeW, y, stripeW, h);
+  if (isPortrait) {
+    const stripeH = h / 10;
+    for (let i = 0; i < 10; i++) {
+      if (i % 2 === 0) {
+        ctx.fillStyle = 'rgba(0,0,0,0.04)';
+        ctx.fillRect(x, y + i * stripeH, w, stripeH);
+      }
+    }
+  } else {
+    const stripeW = w / 10;
+    for (let i = 0; i < 10; i++) {
+      if (i % 2 === 0) {
+        ctx.fillStyle = 'rgba(0,0,0,0.04)';
+        ctx.fillRect(x + i * stripeW, y, stripeW, h);
+      }
     }
   }
   ctx.restore();
 
-  const lw = Math.max(1.5, w / 350);
+  const lw = Math.max(1.5, Math.min(w, h) / 350);
   ctx.strokeStyle = 'rgba(255,255,255,0.85)';
   ctx.lineWidth = lw;
-
   ctx.strokeRect(x, y, w, h);
 
-  ctx.beginPath();
-  ctx.moveTo(x + w / 2, y);
-  ctx.lineTo(x + w / 2, y + h);
-  ctx.stroke();
-
-  const cr = h * 0.146;
-  ctx.beginPath();
-  ctx.arc(x + w / 2, y + h / 2, cr, 0, Math.PI * 2);
-  ctx.stroke();
-
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
-  ctx.beginPath();
-  ctx.arc(x + w / 2, y + h / 2, 3, 0, Math.PI * 2);
-  ctx.fill();
-
-  const paW = w * (16.5 / 105);
-  const paH = h * (40.32 / 68);
-  const paY = y + (h - paH) / 2;
-  ctx.strokeRect(x, paY, paW, paH);
-
-  const gaW = w * (5.5 / 105);
-  const gaH = h * (18.32 / 68);
-  const gaY = y + (h - gaH) / 2;
-  ctx.strokeRect(x, gaY, gaW, gaH);
-
-  ctx.strokeRect(x + w - paW, paY, paW, paH);
-  ctx.strokeRect(x + w - gaW, gaY, gaW, gaH);
-
-  const goalH = h * (7.32 / 68);
-  const goalW = w * (2.44 / 105);
-  const goalY = y + (h - goalH) / 2;
-  ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-  ctx.strokeRect(x - goalW, goalY, goalW, goalH);
-  ctx.strokeRect(x + w, goalY, goalW, goalH);
-
-  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-  ctx.lineWidth = lw;
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
-
-  const psX_l = x + w * (11 / 105);
-  ctx.beginPath();
-  ctx.arc(psX_l, y + h / 2, 3, 0, Math.PI * 2);
-  ctx.fill();
-
-  const psX_r = x + w * (94 / 105);
-  ctx.beginPath();
-  ctx.arc(psX_r, y + h / 2, 3, 0, Math.PI * 2);
-  ctx.fill();
-
-  const arcR = h * (9.15 / 68);
-  ctx.beginPath();
-  ctx.arc(psX_l, y + h / 2, arcR, -Math.PI * 0.28, Math.PI * 0.28);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(psX_r, y + h / 2, arcR, Math.PI - Math.PI * 0.28, Math.PI + Math.PI * 0.28);
-  ctx.stroke();
-
-  const cornerR = h * (1 / 68);
-  [
-    { cx: x,     cy: y,     sa: 0,             ea: Math.PI / 2 },
-    { cx: x + w, cy: y,     sa: Math.PI / 2,   ea: Math.PI },
-    { cx: x + w, cy: y + h, sa: Math.PI,        ea: Math.PI * 1.5 },
-    { cx: x,     cy: y + h, sa: Math.PI * 1.5,  ea: Math.PI * 2 },
-  ].forEach(c => {
+  if (isPortrait) {
+    // 縦向き：上下にゴール、水平センターライン
+    // センターライン（水平）
     ctx.beginPath();
-    ctx.arc(c.cx, c.cy, cornerR, c.sa, c.ea);
+    ctx.moveTo(x, y + h / 2);
+    ctx.lineTo(x + w, y + h / 2);
     ctx.stroke();
-  });
 
-  // フォーメーションラベル
-  ctx.save();
-  ctx.font = `bold ${Math.round(h * 0.04)}px sans-serif`;
-  ctx.textBaseline = 'top';
-  ctx.fillStyle = 'rgba(255,255,255,0.45)';
-  ctx.textAlign = 'left';
-  ctx.fillText(`自: ${state.currentOwnFormation}`, x + 6, y + 4);
-  ctx.textAlign = 'right';
-  ctx.fillText(`相手: ${state.currentOppFormation}`, x + w - 6, y + 4);
-  ctx.restore();
+    // センターサークル
+    const cr = w * 0.146;
+    ctx.beginPath();
+    ctx.arc(x + w / 2, y + h / 2, cr, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.beginPath();
+    ctx.arc(x + w / 2, y + h / 2, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ペナルティエリア（上下）
+    const paH_p = h * (16.5 / 105);
+    const paW_p = w * (40.32 / 68);
+    const paX_p = x + (w - paW_p) / 2;
+    ctx.strokeRect(paX_p, y, paW_p, paH_p);
+    ctx.strokeRect(paX_p, y + h - paH_p, paW_p, paH_p);
+
+    // ゴールエリア（上下）
+    const gaH_p = h * (5.5 / 105);
+    const gaW_p = w * (18.32 / 68);
+    const gaX_p = x + (w - gaW_p) / 2;
+    ctx.strokeRect(gaX_p, y, gaW_p, gaH_p);
+    ctx.strokeRect(gaX_p, y + h - gaH_p, gaW_p, gaH_p);
+
+    // ゴール（上下）
+    const goalW_p = w * (7.32 / 68);
+    const goalH_p = h * (2.44 / 105);
+    const goalX_p = x + (w - goalW_p) / 2;
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.strokeRect(goalX_p, y - goalH_p, goalW_p, goalH_p);
+    ctx.strokeRect(goalX_p, y + h, goalW_p, goalH_p);
+
+    // ペナルティスポット
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = lw;
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    const psY_t = y + h * (11 / 105);
+    const psY_b = y + h * (94 / 105);
+    ctx.beginPath(); ctx.arc(x + w / 2, psY_t, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x + w / 2, psY_b, 3, 0, Math.PI * 2); ctx.fill();
+
+    // ペナルティアーク
+    const arcR_p = w * (9.15 / 68);
+    ctx.beginPath();
+    ctx.arc(x + w / 2, psY_t, arcR_p, Math.PI * 0.22, Math.PI * 0.78);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x + w / 2, psY_b, arcR_p, -Math.PI * 0.78, -Math.PI * 0.22);
+    ctx.stroke();
+
+    // コーナーアーク
+    const cornerR_p = w * (1 / 68);
+    [
+      { cx: x,     cy: y,     sa: 0,             ea: Math.PI / 2 },
+      { cx: x + w, cy: y,     sa: Math.PI / 2,   ea: Math.PI },
+      { cx: x + w, cy: y + h, sa: Math.PI,        ea: Math.PI * 1.5 },
+      { cx: x,     cy: y + h, sa: Math.PI * 1.5,  ea: Math.PI * 2 },
+    ].forEach(c => {
+      ctx.beginPath(); ctx.arc(c.cx, c.cy, cornerR_p, c.sa, c.ea); ctx.stroke();
+    });
+
+    // フォーメーションラベル（縦向き：自チーム=下側、相手=上側）
+    ctx.save();
+    const fSize = Math.round(w * 0.07);
+    ctx.font = `bold ${fSize}px sans-serif`;
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.textAlign = 'center';
+    const ownLabel = state.sidesFlipped ? `相手: ${state.currentOppFormation}` : `自: ${state.currentOwnFormation}`;
+    const oppLabel = state.sidesFlipped ? `自: ${state.currentOwnFormation}` : `相手: ${state.currentOppFormation}`;
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(ownLabel, x + w / 2, y + h - 4);
+    ctx.textBaseline = 'top';
+    ctx.fillText(oppLabel, x + w / 2, y + 4);
+    ctx.restore();
+
+  } else {
+    // 横向き：左右にゴール、垂直センターライン
+    ctx.beginPath();
+    ctx.moveTo(x + w / 2, y);
+    ctx.lineTo(x + w / 2, y + h);
+    ctx.stroke();
+
+    const cr = h * 0.146;
+    ctx.beginPath();
+    ctx.arc(x + w / 2, y + h / 2, cr, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.beginPath();
+    ctx.arc(x + w / 2, y + h / 2, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    const paW = w * (16.5 / 105);
+    const paH = h * (40.32 / 68);
+    const paY = y + (h - paH) / 2;
+    ctx.strokeRect(x, paY, paW, paH);
+    const gaW = w * (5.5 / 105);
+    const gaH = h * (18.32 / 68);
+    const gaY = y + (h - gaH) / 2;
+    ctx.strokeRect(x, gaY, gaW, gaH);
+    ctx.strokeRect(x + w - paW, paY, paW, paH);
+    ctx.strokeRect(x + w - gaW, gaY, gaW, gaH);
+
+    const goalH = h * (7.32 / 68);
+    const goalW = w * (2.44 / 105);
+    const goalY = y + (h - goalH) / 2;
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.strokeRect(x - goalW, goalY, goalW, goalH);
+    ctx.strokeRect(x + w, goalY, goalW, goalH);
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = lw;
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    const psX_l = x + w * (11 / 105);
+    ctx.beginPath(); ctx.arc(psX_l, y + h / 2, 3, 0, Math.PI * 2); ctx.fill();
+    const psX_r = x + w * (94 / 105);
+    ctx.beginPath(); ctx.arc(psX_r, y + h / 2, 3, 0, Math.PI * 2); ctx.fill();
+
+    const arcR = h * (9.15 / 68);
+    ctx.beginPath();
+    ctx.arc(psX_l, y + h / 2, arcR, -Math.PI * 0.28, Math.PI * 0.28);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(psX_r, y + h / 2, arcR, Math.PI - Math.PI * 0.28, Math.PI + Math.PI * 0.28);
+    ctx.stroke();
+
+    const cornerR = h * (1 / 68);
+    [
+      { cx: x,     cy: y,     sa: 0,             ea: Math.PI / 2 },
+      { cx: x + w, cy: y,     sa: Math.PI / 2,   ea: Math.PI },
+      { cx: x + w, cy: y + h, sa: Math.PI,        ea: Math.PI * 1.5 },
+      { cx: x,     cy: y + h, sa: Math.PI * 1.5,  ea: Math.PI * 2 },
+    ].forEach(c => {
+      ctx.beginPath(); ctx.arc(c.cx, c.cy, cornerR, c.sa, c.ea); ctx.stroke();
+    });
+
+    // フォーメーションラベル（横向き：自チーム=左側、相手=右側）
+    ctx.save();
+    ctx.font = `bold ${Math.round(h * 0.04)}px sans-serif`;
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    const ownLabelH = state.sidesFlipped ? `相手: ${state.currentOppFormation}` : `自: ${state.currentOwnFormation}`;
+    const oppLabelH = state.sidesFlipped ? `自: ${state.currentOwnFormation}` : `相手: ${state.currentOppFormation}`;
+    ctx.textAlign = 'left';
+    ctx.fillText(ownLabelH, x + 6, y + 4);
+    ctx.textAlign = 'right';
+    ctx.fillText(oppLabelH, x + w - 6, y + 4);
+    ctx.restore();
+  }
 }
 
 // ===========================
@@ -672,6 +788,13 @@ function drawPitch() {
 function getBenchSlotCenter(slotIndex) {
   const { x, y, w, h } = state.benchRect;
   const n = BENCH_SLOT_COUNT;
+  if (state.orientation === 'portrait') {
+    // 縦向き：縦列スロット
+    const slotH = h / n;
+    const cx = x + w / 2;
+    const cy = y + slotH * slotIndex + slotH / 2;
+    return { cx, cy };
+  }
   const slotW = w / n;
   const cx = x + slotW * slotIndex + slotW / 2;
   const cy = y + h / 2;
@@ -680,6 +803,7 @@ function getBenchSlotCenter(slotIndex) {
 
 function drawBenchArea() {
   const { x, y, w, h } = state.benchRect;
+  const isPortrait = state.orientation === 'portrait';
 
   // 背景
   ctx.fillStyle = 'rgba(15, 25, 50, 0.75)';
@@ -695,21 +819,38 @@ function drawBenchArea() {
 
   // ラベル
   ctx.fillStyle = 'rgba(255,255,255,0.35)';
-  ctx.font = `bold ${Math.round(h * 0.18)}px sans-serif`;
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-  ctx.fillText('BENCH', x + 6, y + 3);
+  if (isPortrait) {
+    ctx.font = `bold ${Math.round(w * 0.18)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('B', x + w / 2, y + 3);
+  } else {
+    ctx.font = `bold ${Math.round(h * 0.18)}px sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('BENCH', x + 6, y + 3);
+  }
 
   // スロット区切り線
   const n = BENCH_SLOT_COUNT;
-  const slotW = w / n;
   ctx.strokeStyle = 'rgba(255,255,255,0.08)';
   ctx.lineWidth = 1;
-  for (let i = 1; i < n; i++) {
-    ctx.beginPath();
-    ctx.moveTo(x + slotW * i, y + 4);
-    ctx.lineTo(x + slotW * i, y + h - 4);
-    ctx.stroke();
+  if (isPortrait) {
+    const slotH = h / n;
+    for (let i = 1; i < n; i++) {
+      ctx.beginPath();
+      ctx.moveTo(x + 4, y + slotH * i);
+      ctx.lineTo(x + w - 4, y + slotH * i);
+      ctx.stroke();
+    }
+  } else {
+    const slotW = w / n;
+    for (let i = 1; i < n; i++) {
+      ctx.beginPath();
+      ctx.moveTo(x + slotW * i, y + 4);
+      ctx.lineTo(x + slotW * i, y + h - 4);
+      ctx.stroke();
+    }
   }
 }
 
@@ -725,10 +866,15 @@ function markerToCanvas(marker) {
 }
 
 function getMarkerRadius() {
-  return Math.max(14, state.pitchRect.w / 40);
+  const { w, h } = state.pitchRect;
+  // 縦向きは幅基準、横向きは幅基準
+  return Math.max(14, Math.min(w, h) / 22);
 }
 
 function getBenchMarkerRadius() {
+  if (state.orientation === 'portrait') {
+    return Math.max(10, state.benchRect.w * 0.28);
+  }
   return Math.max(12, state.benchRect.h * 0.32);
 }
 
@@ -1225,6 +1371,39 @@ document.getElementById('btn-apply-opponent').addEventListener('click', () => {
 });
 
 // ===========================
+// 左右入れ替え
+// ===========================
+document.getElementById('btn-flip-sides').addEventListener('click', () => {
+  // 全マーカーの rx を反転
+  state.markers.forEach(m => { m.rx = 1 - m.rx; });
+  // ピッチ上のベンチマーカーも反転
+  state.bench.forEach(m => {
+    if (m._onPitch && m.rx !== undefined) m.rx = 1 - m.rx;
+  });
+  state.sidesFlipped = !state.sidesFlipped;
+  draw();
+  showToast('左右を入れ替えました');
+});
+
+// ===========================
+// ピッチ向き切替
+// ===========================
+document.querySelectorAll('input[name="pitch-orientation"]').forEach(radio => {
+  radio.addEventListener('change', e => {
+    state.orientation = e.target.value;
+    // 向き切替時はベンチマーカーのピッチ外位置をリセット（ベンチ内に戻す）
+    state.bench.forEach(m => {
+      if (!m._onPitch) {
+        delete m.rx;
+        delete m.ry;
+      }
+    });
+    resizeCanvas();
+    showToast(`向きを${e.target.value === 'portrait' ? '縦' : '横'}に切り替えました`);
+  });
+});
+
+// ===========================
 // リセット
 // ===========================
 document.getElementById('btn-reset').addEventListener('click', () => {
@@ -1268,6 +1447,8 @@ document.getElementById('btn-save').addEventListener('click', () => {
     showOpponent: state.showOpponent,
     showName: state.showName,
     showNumber: state.showNumber,
+    orientation: state.orientation,
+    sidesFlipped: state.sidesFlipped,
   };
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -1297,12 +1478,17 @@ document.getElementById('btn-load').addEventListener('click', () => {
     state.showOpponent = data.showOpponent ?? true;
     state.showName = data.showName ?? true;
     state.showNumber = data.showNumber ?? true;
+    state.orientation = data.orientation ?? 'landscape';
+    state.sidesFlipped = data.sidesFlipped ?? false;
 
     document.getElementById('formation-own').value = state.currentOwnFormation;
     document.getElementById('formation-opponent').value = state.currentOppFormation;
     document.getElementById('toggle-opponent').checked = state.showOpponent;
     document.getElementById('toggle-name').checked = state.showName;
     document.getElementById('toggle-number').checked = state.showNumber;
+    document.getElementById(
+      state.orientation === 'portrait' ? 'orient-portrait' : 'orient-landscape'
+    ).checked = true;
 
     // 画像キャッシュを再構築
     [...state.markers, ...state.bench].forEach(m => {
