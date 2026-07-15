@@ -857,11 +857,46 @@ function drawBenchArea() {
 // ===========================
 // マーカー描画
 // ===========================
+// rx/ry は常に「横向き基準」で保存（rx=左右0-1, ry=上下0-1）
+// 縦向き表示時は rx→ry方向, ry→rx方向 に90度回転して描画する
 function markerToCanvas(marker) {
   const { x, y, w, h } = state.pitchRect;
+  if (state.orientation === 'portrait') {
+    // 縦向き変換：横向きの rx(左右0=自ゴール) → 縦向きの上下
+    // 自チーム・ボールは下側（大きいy）、相手は上側（小さいy）
+    // 横向き rx: 自ゴール=0.05 → 自陣下側 cy大 → portraitY = 1 - rx
+    // 横向き rx: 相手ゴール=0.95 → 相手陣上側 cy小 → portraitY = 1 - rx でOK（相手も同じ式）
+    // ただし相手チームは rx が大きいほど上側なので 1-rx で上側になる → 統一式 portraitY = 1 - rx
+    const portraitX = marker.ry;      // 横向きの上下 → 縦向きの左右（そのまま）
+    const portraitY = 1 - marker.rx;  // 横向きの左右 → 縦向きの上下（反転：自チームGKが下へ）
+    return {
+      cx: x + portraitX * w,
+      cy: y + portraitY * h,
+    };
+  }
   return {
     cx: x + marker.rx * w,
     cy: y + marker.ry * h,
+  };
+}
+
+// キャンバス座標 → rx/ry（横向き基準）へ逆変換
+function canvasToMarker(canvasX, canvasY) {
+  const { x, y, w, h } = state.pitchRect;
+  if (state.orientation === 'portrait') {
+    // markerToCanvasの逆変換
+    // portraitX = ry → ry = portraitX
+    // portraitY = 1 - rx → rx = 1 - portraitY
+    const portraitX = (canvasX - x) / w;
+    const portraitY = (canvasY - y) / h;
+    return {
+      rx: clamp(1 - portraitY, 0, 1),
+      ry: clamp(portraitX, 0, 1),
+    };
+  }
+  return {
+    rx: clamp((canvasX - x) / w, 0, 1),
+    ry: clamp((canvasY - y) / h, 0, 1),
   };
 }
 
@@ -897,11 +932,9 @@ function drawMarker(marker) {
 
 function drawBenchMarker(marker) {
   if (marker._onPitch) {
-    // ピッチ上に移動済みの場合はピッチマーカーと同じサイズで描画
+    // ピッチ上に移動済みの場合はmarkerToCanvasを使って縦横対応
     const r = getMarkerRadius();
-    const { x, y, w, h } = state.pitchRect;
-    const cx = x + marker.rx * w;
-    const cy = y + marker.ry * h;
+    const { cx, cy } = markerToCanvas(marker);
     drawOwnMarker(marker, cx, cy, r, true);
   } else if (marker.rx !== undefined) {
     // ベンチエリア内の自由位置
@@ -1103,10 +1136,9 @@ function hitTestBench(mx, my) {
 // ベンチマーカーの現在位置を返す（自由移動後は rx/ry を使用）
 function getBenchMarkerPos(marker) {
   if (marker.rx !== undefined && marker.ry !== undefined) {
-    // ピッチ上に移動済みの場合はピッチ座標系を使用
+    // ピッチ上に移動済みの場合はmarkerToCanvasで縦横対応
     if (marker._onPitch) {
-      const { x, y, w, h } = state.pitchRect;
-      return { cx: x + marker.rx * w, cy: y + marker.ry * h };
+      return markerToCanvas(marker);
     }
     // ベンチエリア内での自由位置
     const { x, y, w, h } = state.benchRect;
@@ -1170,9 +1202,10 @@ function onPointerMove(e) {
   const targetY = pos.y - state.dragging.offsetY;
 
   if (state.dragging.area === 'pitch') {
-    const { x, y, w, h } = state.pitchRect;
-    m.rx = clamp((targetX - x) / w, 0, 1);
-    m.ry = clamp((targetY - y) / h, 0, 1);
+    // canvasToMarkerで縦横共通の逆変換
+    const { rx, ry } = canvasToMarker(targetX, targetY);
+    m.rx = rx;
+    m.ry = ry;
   } else if (state.dragging.area === 'bench') {
     // ベンチマーカーはピッチ・ベンチエリア問わず全画面を自由に移動可能
     const { x: px, y: py, w: pw, h: ph } = state.pitchRect;
@@ -1181,8 +1214,9 @@ function onPointerMove(e) {
     // ピッチエリア内にドラッグされたらピッチ座標系に切り替え
     if (targetX >= px && targetX <= px + pw && targetY >= py && targetY <= py + ph) {
       m._onPitch = true;
-      m.rx = clamp((targetX - px) / pw, 0, 1);
-      m.ry = clamp((targetY - py) / ph, 0, 1);
+      const { rx, ry } = canvasToMarker(targetX, targetY);
+      m.rx = rx;
+      m.ry = ry;
     } else {
       // ベンチエリア（またはその外）では全キャンバス座標で管理
       m._onPitch = false;
@@ -1374,7 +1408,7 @@ document.getElementById('btn-apply-opponent').addEventListener('click', () => {
 // 左右入れ替え
 // ===========================
 document.getElementById('btn-flip-sides').addEventListener('click', () => {
-  // 全マーカーの rx を反転
+  // rx/ryは横向き基準で保存されているので、左右入れ替えは常に rx を反転
   state.markers.forEach(m => { m.rx = 1 - m.rx; });
   // ピッチ上のベンチマーカーも反転
   state.bench.forEach(m => {
