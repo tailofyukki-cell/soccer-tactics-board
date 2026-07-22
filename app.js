@@ -1092,7 +1092,7 @@ function drawBall(cx, cy, r) {
 const ARROW_COLORS = {
   'arrow-ball': { stroke: '#facc15', fill: '#facc15' },   // 黄色（ボール）
   'arrow-own':  { stroke: '#93c5fd', fill: '#93c5fd' },   // 淡青（自チーム）
-  'arrow-opp':  { stroke: '#86efac', fill: '#86efac' },   // 淡緑（相手）
+  'arrow-opp':  { stroke: '#f87171', fill: '#f87171' },   // 赤（相手）
 };
 
 const SPACE_COLORS = [
@@ -1196,9 +1196,19 @@ function draw() {
   state.bench.forEach(m => drawBenchMarker(m));
 
   // 矢印（マーカーの上に描画）
-  state.arrows.forEach(a => {
+  state.arrows.forEach((a, i) => {
     const c = ARROW_COLORS[a.type];
-    drawArrow(a.x1, a.y1, a.x2, a.y2, c.stroke);
+    const isDragging = state.dragging && state.dragging.area === 'arrow' && state.dragging.index === i;
+    drawArrow(a.x1, a.y1, a.x2, a.y2, c.stroke, isDragging ? 4.5 : 3);
+    // ドラッグ中は始点・終点に操作ハンドルを表示
+    if (isDragging || state.drawMode === 'move') {
+      const r = getMarkerRadius() * 0.5;
+      ctx.save();
+      ctx.fillStyle = isDragging ? '#fff' : 'rgba(255,255,255,0.4)';
+      ctx.beginPath(); ctx.arc(a.x1, a.y1, r, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(a.x2, a.y2, r, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
   });
 
   // 描画中の矢印プレビュー
@@ -1294,6 +1304,29 @@ function onPointerDown(e) {
     return;
   }
 
+  // 矢印のドラッグ（マーカーより先に判定）
+  const arrowHit = hitTestArrow(pos.x, pos.y);
+  if (arrowHit) {
+    const a = state.arrows[arrowHit.index];
+    state.dragging = { area: 'arrow', index: arrowHit.index, part: arrowHit.part,
+      offsetX: pos.x, offsetY: pos.y,
+      origX1: a.x1, origY1: a.y1, origX2: a.x2, origY2: a.y2 };
+    canvas.style.cursor = 'grabbing';
+    return;
+  }
+
+  // スペース円のドラッグ
+  const spaceHit = hitTestSpace(pos.x, pos.y);
+  if (spaceHit) {
+    const s = state.spaces[spaceHit.index];
+    state.dragging = { area: 'space', index: spaceHit.index, part: spaceHit.part,
+      offsetX: pos.x, offsetY: pos.y,
+      origRx: s.rx, origRy: s.ry, origRr: s.rr,
+      cx: spaceHit.cx, cy: spaceHit.cy };
+    canvas.style.cursor = spaceHit.part === 'resize' ? 'nwse-resize' : 'grabbing';
+    return;
+  }
+
   // ピッチ上のマーカーを優先
   const pitchHit = hitTestPitch(pos.x, pos.y);
   if (pitchHit) {
@@ -1316,6 +1349,50 @@ function onPointerDown(e) {
     state.dragging = { marker: benchHit, area: 'bench', offsetX: pos.x - cx, offsetY: pos.y - cy };
     canvas.style.cursor = 'grabbing';
   }
+}
+
+// ===========================
+// 矢印・円のヒットテスト
+// ===========================
+function hitTestArrow(mx, my) {
+  const r = getMarkerRadius();
+  const hitR = r * 0.7;
+  for (let i = state.arrows.length - 1; i >= 0; i--) {
+    const a = state.arrows[i];
+    const midX = (a.x1 + a.x2) / 2, midY = (a.y1 + a.y2) / 2;
+    // 始点のヒット
+    if (Math.hypot(mx - a.x1, my - a.y1) < hitR) return { index: i, part: 'start' };
+    // 終点のヒット
+    if (Math.hypot(mx - a.x2, my - a.y2) < hitR) return { index: i, part: 'end' };
+    // 中心（全体移動）
+    if (Math.hypot(mx - midX, my - midY) < hitR * 1.2) return { index: i, part: 'body' };
+    // 線分上
+    if (distToSegment(mx, my, a.x1, a.y1, a.x2, a.y2) < hitR * 0.7) return { index: i, part: 'body' };
+  }
+  return null;
+}
+
+function hitTestSpace(mx, my) {
+  const { x, y, w, h } = state.pitchRect;
+  for (let i = state.spaces.length - 1; i >= 0; i--) {
+    const s = state.spaces[i];
+    let cx, cy;
+    if (state.orientation === 'portrait') {
+      cx = x + s.ry * w;
+      cy = y + (1 - s.rx) * h;
+    } else {
+      cx = x + s.rx * w;
+      cy = y + s.ry * h;
+    }
+    const rPx = s.rr * Math.min(w, h);
+    const dist = Math.hypot(mx - cx, my - cy);
+    if (dist <= rPx) {
+      // 縁付近く（外周からrPx*0.25以内）はリサイズ、それ以外は移動
+      const part = dist > rPx * 0.75 ? 'resize' : 'move';
+      return { index: i, part, cx, cy, rPx };
+    }
+  }
+  return null;
 }
 
 // 右クリックで矢印・円を削除
@@ -1388,6 +1465,50 @@ function onPointerMove(e) {
   if (!state.dragging) return;
   e.preventDefault();
   const pos = getCanvasPos(e);
+
+  // 矢印のドラッグ
+  if (state.dragging.area === 'arrow') {
+    const d = state.dragging;
+    const a = state.arrows[d.index];
+    if (!a) { state.dragging = null; return; }
+    const dx = pos.x - d.offsetX, dy = pos.y - d.offsetY;
+    if (d.part === 'start') {
+      a.x1 = d.origX1 + dx;
+      a.y1 = d.origY1 + dy;
+    } else if (d.part === 'end') {
+      a.x2 = d.origX2 + dx;
+      a.y2 = d.origY2 + dy;
+    } else { // body
+      a.x1 = d.origX1 + dx;
+      a.y1 = d.origY1 + dy;
+      a.x2 = d.origX2 + dx;
+      a.y2 = d.origY2 + dy;
+    }
+    draw();
+    return;
+  }
+
+  // スペース円のドラッグ
+  if (state.dragging.area === 'space') {
+    const d = state.dragging;
+    const s = state.spaces[d.index];
+    if (!s) { state.dragging = null; return; }
+    const { x, y, w, h } = state.pitchRect;
+    const minWH = Math.min(w, h);
+    if (d.part === 'move') {
+      // 中心をピッチ座標に変換
+      const { rx, ry } = canvasToMarker(pos.x, pos.y);
+      s.rx = clamp(rx, 0, 1);
+      s.ry = clamp(ry, 0, 1);
+    } else { // resize
+      // ドラッグ中のカーソル位置から中心までの距離で半径を決定
+      const distPx = Math.hypot(pos.x - d.cx, pos.y - d.cy);
+      s.rr = clamp(distPx / minWH, 0.02, 0.5);
+    }
+    draw();
+    return;
+  }
+
   const m = state.dragging.marker;
   const targetX = pos.x - state.dragging.offsetX;
   const targetY = pos.y - state.dragging.offsetY;
