@@ -430,6 +430,10 @@ const state = {
   currentOppFormation: '4-2-3-1',
   orientation: 'landscape', // 'landscape' | 'portrait'
   sidesFlipped: false,      // true = 自チームが右側
+  drawMode: 'move',         // 'move' | 'arrow-ball' | 'arrow-own' | 'arrow-opp' | 'space'
+  arrows: [],               // { type, x1, y1, x2, y2 } キャンバス座標
+  spaces: [],               // { rx, ry, rr } ピッチ正規化座標
+  drawing: null,            // 描画中の一時オブジェクト
 };
 
 // ===========================
@@ -1083,6 +1087,83 @@ function drawBall(cx, cy, r) {
 }
 
 // ===========================
+// 矢印・スペース円の描画
+// ===========================
+const ARROW_COLORS = {
+  'arrow-ball': { stroke: '#facc15', fill: '#facc15' },   // 黄色（ボール）
+  'arrow-own':  { stroke: '#93c5fd', fill: '#93c5fd' },   // 淡青（自チーム）
+  'arrow-opp':  { stroke: '#86efac', fill: '#86efac' },   // 淡緑（相手）
+};
+
+const SPACE_COLORS = [
+  'rgba(250,204,21,0.25)',   // 黄
+  'rgba(147,197,253,0.25)', // 青
+  'rgba(134,239,172,0.25)', // 緑
+  'rgba(249,168,212,0.25)', // ピンク
+  'rgba(196,181,253,0.25)', // 紫
+];
+
+function drawArrow(x1, y1, x2, y2, color, lineWidth = 3) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 4) return;
+
+  const headLen = Math.min(18, len * 0.35);
+  const angle = Math.atan2(dy, dx);
+
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = lineWidth;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // 線分（矢印头の付け根まで）
+  const tipX = x2 - Math.cos(angle) * headLen * 0.5;
+  const tipY = y2 - Math.sin(angle) * headLen * 0.5;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(tipX, tipY);
+  ctx.stroke();
+
+  // 矢印頭
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - headLen * Math.cos(angle - Math.PI / 6), y2 - headLen * Math.sin(angle - Math.PI / 6));
+  ctx.lineTo(x2 - headLen * Math.cos(angle + Math.PI / 6), y2 - headLen * Math.sin(angle + Math.PI / 6));
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawSpaceCircle(space, colorIndex) {
+  const { x, y, w, h } = state.pitchRect;
+  // rx/ry → キャンバス座標（markerToCanvasと同じ変換）
+  let cx, cy, rPx;
+  if (state.orientation === 'portrait') {
+    cx = x + space.ry * w;
+    cy = y + (1 - space.rx) * h;
+    rPx = space.rr * Math.min(w, h);
+  } else {
+    cx = x + space.rx * w;
+    cy = y + space.ry * h;
+    rPx = space.rr * Math.min(w, h);
+  }
+  const color = SPACE_COLORS[colorIndex % SPACE_COLORS.length];
+  const borderColor = color.replace('0.25', '0.6');
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, rPx, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = borderColor;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ===========================
 // メイン描画
 // ===========================
 function draw() {
@@ -1092,6 +1173,16 @@ function draw() {
 
   drawPitch();
   drawBenchArea();
+
+  // スペース円（マーカーの下に描画）
+  state.spaces.forEach((s, i) => drawSpaceCircle(s, i));
+
+  // 描画中のスペース円プレビュー
+  if (state.drawing && state.drawing.type === 'space') {
+    const d = state.drawing;
+    const tmpSpace = { rx: d.rx, ry: d.ry, rr: d.rr };
+    drawSpaceCircle(tmpSpace, state.spaces.length);
+  }
 
   // ピッチマーカー（ボールは最後）
   const balls = [];
@@ -1103,6 +1194,19 @@ function draw() {
 
   // ベンチマーカー
   state.bench.forEach(m => drawBenchMarker(m));
+
+  // 矢印（マーカーの上に描画）
+  state.arrows.forEach(a => {
+    const c = ARROW_COLORS[a.type];
+    drawArrow(a.x1, a.y1, a.x2, a.y2, c.stroke);
+  });
+
+  // 描画中の矢印プレビュー
+  if (state.drawing && state.drawing.type !== 'space') {
+    const d = state.drawing;
+    const c = ARROW_COLORS[d.type];
+    drawArrow(d.x1, d.y1, d.x2, d.y2, c.stroke, 2.5);
+  }
 }
 
 // ===========================
@@ -1166,6 +1270,30 @@ function onPointerDown(e) {
   e.preventDefault();
   const pos = getCanvasPos(e);
 
+  // 矢印・スペース円描画モード
+  if (state.drawMode !== 'move') {
+    const { x: px, y: py, w: pw, h: ph } = state.pitchRect;
+    // ピッチ内の操作のみ対応
+    if (pos.x >= px && pos.x <= px + pw && pos.y >= py && pos.y <= py + ph) {
+      if (state.drawMode === 'space') {
+        // スペース円：始点を記録
+        const { rx, ry } = canvasToMarker(pos.x, pos.y);
+        state.drawing = { type: 'space', rx, ry, rr: 0, startX: pos.x, startY: pos.y };
+      } else {
+        // 矢印：始点を記録
+        state.drawing = { type: state.drawMode, x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y };
+      }
+      canvas.style.cursor = 'crosshair';
+    }
+    return;
+  }
+
+  // 移動モード：右クリックで矢印・円を削除
+  if (e.button === 2) {
+    handleRightClick(pos.x, pos.y);
+    return;
+  }
+
   // ピッチ上のマーカーを優先
   const pitchHit = hitTestPitch(pos.x, pos.y);
   if (pitchHit) {
@@ -1190,10 +1318,73 @@ function onPointerDown(e) {
   }
 }
 
+// 右クリックで矢印・円を削除
+function handleRightClick(mx, my) {
+  const r = getMarkerRadius();
+
+  // 矢印の削除（線分からの距離で判定）
+  for (let i = state.arrows.length - 1; i >= 0; i--) {
+    const a = state.arrows[i];
+    if (distToSegment(mx, my, a.x1, a.y1, a.x2, a.y2) < r * 0.8) {
+      state.arrows.splice(i, 1);
+      draw();
+      return;
+    }
+  }
+
+  // スペース円の削除
+  for (let i = state.spaces.length - 1; i >= 0; i--) {
+    const s = state.spaces[i];
+    const { x, y, w, h } = state.pitchRect;
+    let cx, cy, rPx;
+    if (state.orientation === 'portrait') {
+      cx = x + s.ry * w;
+      cy = y + (1 - s.rx) * h;
+    } else {
+      cx = x + s.rx * w;
+      cy = y + s.ry * h;
+    }
+    rPx = s.rr * Math.min(w, h);
+    const dx = mx - cx, dy = my - cy;
+    if (dx * dx + dy * dy <= rPx * rPx) {
+      state.spaces.splice(i, 1);
+      draw();
+      return;
+    }
+  }
+}
+
+// 点から線分までの距離
+function distToSegment(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+  const t = clamp(((px - x1) * dx + (py - y1) * dy) / lenSq, 0, 1);
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+}
+
 window.addEventListener('mousemove', onPointerMove);
 window.addEventListener('touchmove', onPointerMove, { passive: false });
 
 function onPointerMove(e) {
+  // 描画中の矢印・円の更新
+  if (state.drawing) {
+    e.preventDefault();
+    const pos = getCanvasPos(e);
+    const d = state.drawing;
+    if (d.type === 'space') {
+      const dx = pos.x - d.startX, dy = pos.y - d.startY;
+      const distPx = Math.sqrt(dx * dx + dy * dy);
+      const { w, h } = state.pitchRect;
+      d.rr = distPx / Math.min(w, h);
+    } else {
+      d.x2 = pos.x;
+      d.y2 = pos.y;
+    }
+    draw();
+    return;
+  }
+
   if (!state.dragging) return;
   e.preventDefault();
   const pos = getCanvasPos(e);
@@ -1233,8 +1424,27 @@ window.addEventListener('mouseup', onPointerUp);
 window.addEventListener('touchend', onPointerUp);
 
 function onPointerUp() {
+  // 描画完了：矢印・円を確定
+  if (state.drawing) {
+    const d = state.drawing;
+    if (d.type === 'space') {
+      if (d.rr > 0.01) {
+        state.spaces.push({ rx: d.rx, ry: d.ry, rr: d.rr });
+      }
+    } else {
+      const dx = d.x2 - d.x1, dy = d.y2 - d.y1;
+      if (Math.sqrt(dx * dx + dy * dy) > 8) {
+        state.arrows.push({ type: d.type, x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2 });
+      }
+    }
+    state.drawing = null;
+    canvas.style.cursor = 'crosshair';
+    draw();
+    return;
+  }
+
   state.dragging = null;
-  canvas.style.cursor = 'default';
+  canvas.style.cursor = state.drawMode !== 'move' ? 'crosshair' : 'default';
 }
 
 // ===========================
@@ -1272,6 +1482,9 @@ function updatePreview(dataUrl) {
 // ダブルクリックで編集モーダルを開く
 // ===========================
 canvas.addEventListener('dblclick', e => {
+  // 描画モード中は編集モーダルを開かない
+  if (state.drawMode !== 'move') return;
+
   const pos = getCanvasPos(e);
 
   // ピッチ上の自チームマーカー
@@ -1438,6 +1651,32 @@ document.querySelectorAll('input[name="pitch-orientation"]').forEach(radio => {
 });
 
 // ===========================
+// 描画モード
+// ===========================
+document.getElementById('draw-mode').addEventListener('change', e => {
+  state.drawMode = e.target.value;
+  state.drawing = null;
+  canvas.style.cursor = state.drawMode !== 'move' ? 'crosshair' : 'default';
+});
+
+document.getElementById('btn-clear-drawings').addEventListener('click', () => {
+  state.arrows = [];
+  state.spaces = [];
+  state.drawing = null;
+  draw();
+  showToast('矢印・スペース円を消去しました');
+});
+
+// 右クリックのデフォルト動作を無効化（矢印・円の削除に使用）
+canvas.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  if (state.drawMode === 'move') {
+    const pos = getCanvasPos(e);
+    handleRightClick(pos.x, pos.y);
+  }
+});
+
+// ===========================
 // リセット
 // ===========================
 document.getElementById('btn-reset').addEventListener('click', () => {
@@ -1447,6 +1686,9 @@ document.getElementById('btn-reset').addEventListener('click', () => {
   state.currentOppFormation = oppKey;
   state.markers = buildMarkers(ownKey, oppKey, null);
   state.bench = createBenchMarkers(null);
+  state.arrows = [];
+  state.spaces = [];
+  state.drawing = null;
   draw();
   showToast('初期配置にリセットしました');
 });
@@ -1470,7 +1712,7 @@ document.getElementById('toggle-number').addEventListener('change', e => {
 // ===========================
 // 保存・読込（ローカルストレージ）
 // ===========================
-const STORAGE_KEY = 'soccer_tactics_board_v4';
+const STORAGE_KEY = 'soccer_tactics_board_v5';
 
 document.getElementById('btn-save').addEventListener('click', () => {
   const data = {
@@ -1483,6 +1725,8 @@ document.getElementById('btn-save').addEventListener('click', () => {
     showNumber: state.showNumber,
     orientation: state.orientation,
     sidesFlipped: state.sidesFlipped,
+    arrows: state.arrows.slice(),
+    spaces: state.spaces.slice(),
   };
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -1514,6 +1758,8 @@ document.getElementById('btn-load').addEventListener('click', () => {
     state.showNumber = data.showNumber ?? true;
     state.orientation = data.orientation ?? 'landscape';
     state.sidesFlipped = data.sidesFlipped ?? false;
+    state.arrows = data.arrows ?? [];
+    state.spaces = data.spaces ?? [];
 
     document.getElementById('formation-own').value = state.currentOwnFormation;
     document.getElementById('formation-opponent').value = state.currentOppFormation;

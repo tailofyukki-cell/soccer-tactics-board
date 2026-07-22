@@ -101,6 +101,24 @@
     </div>
 
     <div class="panel-group">
+      <label class="panel-label">描画</label>
+      <select id="draw-mode">
+        <optgroup label="マーカー">
+          <option value="move" selected>✓ 移動</option>
+        </optgroup>
+        <optgroup label="矢印">
+          <option value="arrow-ball">➡ ボールの動き</option>
+          <option value="arrow-own">➡ 自チームの動き</option>
+          <option value="arrow-opp">➡ 相手の動き</option>
+        </optgroup>
+        <optgroup label="スペース">
+          <option value="space">○ スペース円</option>
+        </optgroup>
+      </select>
+      <button id="btn-clear-drawings" class="btn btn-danger btn-sm">描画消去</button>
+    </div>
+
+    <div class="panel-group">
       <label class="panel-label">データ</label>
       <button id="btn-save" class="btn btn-primary">保存</button>
       <button id="btn-load" class="btn btn-secondary">読込</button>
